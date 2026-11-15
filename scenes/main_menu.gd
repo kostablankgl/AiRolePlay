@@ -2,7 +2,6 @@ extends "res://ui/screen_base.gd"
 
 var _saves_box: VBoxContainer
 var _continue_btn: Button
-var _ram_label: Label
 var _model_label: Label
 var _saves_count: Label
 var _confirm: ConfirmationDialog
@@ -12,9 +11,7 @@ var _pending_delete_title: String = ""
 func _ready() -> void:
 	_build()
 	SaveManager.saves_changed.connect(_refresh_saves)
-	RamMonitor.updated.connect(_refresh_ram)
 	_refresh_saves()
-	_refresh_ram()
 	_refresh_model_line()
 
 func _build() -> void:
@@ -24,14 +21,8 @@ func _build() -> void:
 	var brand := Kit.vbox(0)
 	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	brand.add_child(Kit.label("Мастер историй", 30, Palette.GOLD))
-	brand.add_child(Kit.small("Локальные ролевые истории. Без интернета, без облака.", Palette.MUTED))
+	brand.add_child(Kit.small("Локальные ролевые истории. Своя GGUF-модель или OpenRouter.", Palette.MUTED))
 	top.add_child(brand)
-	var ram_chip := Kit.panel("TopBarPanel")
-	var ram_box := Kit.vbox(0)
-	_ram_label = Kit.label("", 13, Palette.MUTED)
-	ram_box.add_child(_ram_label)
-	ram_chip.add_child(ram_box)
-	top.add_child(ram_chip)
 	var settings_btn := Kit.button("⚙  Настройки", "GhostButton")
 	settings_btn.custom_minimum_size = Vector2(170, 48)
 	settings_btn.pressed.connect(func() -> void: go("res://scenes/settings.tscn"))
@@ -66,7 +57,7 @@ func _build() -> void:
 	intro.add_child(actions)
 	var features := Kit.grid(3, 10, 10)
 	features.add_child(_mini_card("🏛", "Миры как паки", "Новый мир — папка с лором и валютой, без правки кода."))
-	features.add_child(_mini_card("🧠", "Локальная модель", "Qwen 2.5 3B внутри APK. Работает на CPU."))
+	features.add_child(_mini_card("🧠", "Своя модель", "GGUF в user://models или OpenRouter. Локальный режим работает на CPU."))
 	features.add_child(_mini_card("💾", "Память и автосейв", "Состояние, хроника и отношения хранятся в JSON."))
 	intro.add_child(features)
 	_model_label = Kit.small("", Palette.MUTED)
@@ -193,26 +184,17 @@ func _confirm_delete() -> void:
 func _refresh_model_line() -> void:
 	if _model_label == null:
 		return
-	var bytes := ModelManager.expected_size()
-	var size := "2.0 ГБ" if bytes <= 0 else "%.1f ГБ" % (float(bytes) / 1073741824.0)
-	var name := ModelManager.model_name().get_basename()
-	_model_label.text = "Модель: %s · %s · локально на CPU" % [name, size]
-
-func _refresh_ram() -> void:
-	if _ram_label == null:
+	if str(SettingsManager.get_value("ai_provider", "local")) == "openrouter":
+		_model_label.text = "Провайдер: OpenRouter · " + str(SettingsManager.get_value("openrouter_model", "модель не выбрана"))
 		return
-	var color := Palette.MUTED
-	if RamMonitor.pressure >= 0.86:
-		color = Palette.DANGER
-	elif RamMonitor.pressure >= 0.72:
-		color = Palette.WARN
-	_ram_label.text = "RAM: свободно %s из %s" % [RamMonitor.format_gb(RamMonitor.available_mb), RamMonitor.format_gb(RamMonitor.total_mb)]
-	_ram_label.add_theme_color_override("font_color", color)
+	var bytes := ModelManager.expected_size()
+	var size := "не выбрана" if bytes <= 0 else "%.1f ГБ" % (float(bytes) / 1073741824.0)
+	_model_label.text = "Модель: %s · %s · локально на CPU" % [ModelManager.model_name(), size]
 
 func _show_help() -> void:
 	var d := AcceptDialog.new()
 	d.title = "Как это работает"
-	d.dialog_text = "1. Выберите мир и готового персонажа или создайте своего.\n2. Задайте дату и место старта.\n3. Мастер пишет сцену и три варианта действий.\n4. Можно нажать вариант, написать свой ход или продолжить сцену.\n5. Движок сам меняет время, деньги, предметы, отношения и флаги; после каждого хода — автосохранение.\n\nМодель Qwen 2.5 3B работает локально на CPU. Первый запуск распаковывает её из APK в память приложения."
+	d.dialog_text = "1. Выберите мир и готового персонажа или создайте своего.\n2. Задайте дату и место старта.\n3. Мастер пишет сцену и три варианта действий.\n4. Можно нажать вариант, написать свой ход или продолжить сцену.\n5. Движок сам меняет время, деньги, предметы, отношения и флаги; после каждого хода — автосохранение.\n\nМодель GGUF импортируется в user://models и работает локально на CPU. В настройках можно подключить OpenRouter."
 	d.ok_button_text = "Понятно"
 	add_child(d)
 	d.popup_centered(Vector2i(640, 420))

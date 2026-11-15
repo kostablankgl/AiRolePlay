@@ -54,14 +54,37 @@ static func button(text: String, variation: String = "") -> Button:
 		n.theme_type_variation = variation
 	return n
 
+static func bold_font() -> Font:
+	return load("res://assets/fonts/NotoSans-Bold.ttf")
+
 static func choice_button(heading: String, description: String) -> Button:
 	var n := Button.new()
 	n.theme_type_variation = "ChoiceButton"
 	n.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	n.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	n.text = heading if description == "" else "%s\n%s" % [heading, description]
-	n.custom_minimum_size = Vector2(0, 82)
-	n.add_theme_font_size_override("font_size", 17)
+	n.text = ""
+	n.custom_minimum_size = Vector2(0, 78)
+	n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 14)
+	margin.add_theme_constant_override("margin_right", 14)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	n.add_child(margin)
+	var box := vbox(3)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(box)
+	var title := label(heading, 17, Palette.TEXT, true)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bold := bold_font()
+	if bold != null:
+		title.add_theme_font_override("font", bold)
+	box.add_child(title)
+	if description != "":
+		var desc := label(description, 13, Palette.MUTED, true)
+		desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(desc)
 	return n
 
 static func scroll() -> ScrollContainer:

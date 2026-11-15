@@ -8,3 +8,11 @@
 - 2026-11-15: `juego-full-signed.apk` (2.1 GB) contiene modelo, lore, libs sin OpenMP y paquete `com.hefesto.airoleplay`; SHA-256 `87bb5f25049484ac869482165a52aa708e48458524066ef78a0db6febbb74f6b`.
 - 2026-11-15: WorldDB descubre los mundos de `res://worlds` por carpeta (sin lista fija); la fecha por defecto sale de `default_start_date` o del primer `start_template` del mundo.
 - 2026-11-15: Los packs pueden definir `language_instruction` y `finance_labels`; las etiquetas de la cartera salen del mundo. Al subir `version`, WorldDB reescribe también el lore copiado.
+- 2026-11-15: Nuevo enfoque sin modelo dentro del APK. `models/` queda fuera del export; los `.gguf` se importan a `user://models` desde Ajustes. El APK debe ser ligero (~27 MB sin modelo). No volver a incrustar el Qwen salvo petición explícita.
+- 2026-11-15: El usuario borró `juego-full-signed.apk` y `juego-full.firmado.apk` para subir el proyecto a GitHub; no restaurarlos. `juego.apk` (27 MB) sigue como APK base.
+- 2026-11-15: OpenRouter es un proveedor opcional real (API compatible OpenAI). Requiere INTERNET, clave en Ajustes, filtro de modelos gratuitos y id manual si la lista falla. Desde la red del build el endpoint devuelve 403; no es fallo del cliente.
+- 2026-11-15: UI de Part 2: historia con scroll externo; derecha con pestañas Héroe/Saco/Relaciones; cartera como objeto; menú anclado; dinero abre el saco; guardado visible arriba; sin RAM en juego/menú. RAM solo en Ajustes.
+- 2026-11-15: Relaciones normalizadas 0–5 y agrupadas por `relationship_groups`; los packs Downton v5 y Neon Port v4 incluyen emoji/tipo/grupo/nota y `home`.
+- 2026-11-15: `WorldDB` importa ZIP/carpeta validando `world.json`; limpia la carpeta si falla. Los diálogos de datos del mundo muestran el JSON y el resumen.
+- 2026-11-15: `flash_attn`, tipo KV y repack se guardan y se pasan, pero el GDExtension actual puede ignorarlos; no prometer que funcionan sin rebuild.
+- 2026-11-15: APK final ligero `juego.apk` (27,961,409 bytes) sin `.gguf`, con fuentes, lore y `permissions/internet=true`; SHA-256 `c799b1d0b15e85ec7d818ab337db4fa18602fc9d37fbcb1df3964e7b202b1653`. Firmado con apksig: v2/v3 OK. Godot avisa que apksigner del SDK falla, pero la firma externa de Hefesto funciona.

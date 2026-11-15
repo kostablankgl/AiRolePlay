@@ -2,11 +2,14 @@ class_name StatusPanel
 extends PanelContainer
 const Palette = preload("res://ui/app_theme.gd")
 const Kit = preload("res://ui/kit.gd")
+const DashedSlotType = preload("res://ui/dashed_slot.gd")
 
-var _tabs: TabContainer
+var _tab_bar: TabBar
+var _body: Control
 var _character_box: VBoxContainer
 var _inventory_box: VBoxContainer
-var _wallet_box: VBoxContainer
+var _relations_box: VBoxContainer
+var _tabs: Array[ScrollContainer] = []
 var _built := false
 
 func _ready() -> void:
@@ -19,89 +22,126 @@ func _ensure() -> void:
 		return
 	_built = true
 	theme_type_variation = "CardPanel"
-	custom_minimum_size = Vector2(340, 0)
+	custom_minimum_size = Vector2(340, 260)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
+	clip_contents = true
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 10)
-	margin.add_theme_constant_override("margin_right", 10)
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_bottom", 10)
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_top", 6)
+	margin.add_theme_constant_override("margin_bottom", 8)
 	add_child(margin)
-	_tabs = TabContainer.new()
-	_tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	margin.add_child(_tabs)
-	_character_box = _make_tab("Герой")
-	_inventory_box = _make_tab("Сумка")
-	_wallet_box = _make_tab("Кошелёк")
+	var box := Kit.vbox(6)
+	margin.add_child(box)
+	_tab_bar = TabBar.new()
+	_tab_bar.add_tab("Герой")
+	_tab_bar.add_tab("Сумка")
+	_tab_bar.add_tab("Отношения")
+	_tab_bar.tab_changed.connect(_switch_tab)
+	box.add_child(_tab_bar)
+	_body = Control.new()
+	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_body.clip_contents = true
+	box.add_child(_body)
+	_character_box = _make_tab()
+	_inventory_box = _make_tab()
+	_relations_box = _make_tab()
+	_switch_tab(0)
 
-func _make_tab(title: String) -> VBoxContainer:
+func _make_tab() -> VBoxContainer:
 	var sc := ScrollContainer.new()
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	sc.name = title
-	_tabs.add_child(sc)
-	var box := Kit.vbox(10)
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sc.add_child(box)
-	return box
+	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_body.add_child(sc)
+	sc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var content := Kit.vbox(8)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(content)
+	_tabs.append(sc)
+	return content
+
+func _switch_tab(index: int) -> void:
+	for i in range(_tabs.size()):
+		_tabs[i].visible = i == index
+
+func open_bag() -> void:
+	_tab_bar.current_tab = 1
+	_switch_tab(1)
+
+func open_wallet() -> void:
+	open_bag()
+	_show_item(GameState.wallet_item())
 
 func refresh() -> void:
 	if not _built:
 		return
 	_refresh_character()
 	_refresh_inventory()
-	_refresh_wallet()
+	_refresh_relations()
+
+func _row(key: String, value: String, color: Color = Palette.TEXT) -> HBoxContainer:
+	var line := Kit.hbox(8)
+	var k := Kit.label(key, 13, Palette.MUTED)
+	k.custom_minimum_size.x = 74
+	line.add_child(k)
+	var v := Kit.label(value, 14, color, true)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.add_child(v)
+	return line
 
 func _refresh_character() -> void:
 	Kit.clear(_character_box)
 	var c := GameState.character
 	var name := str(c.get("name", "Безымянный"))
 	var role := str(c.get("title", ""))
-	_character_box.add_child(Kit.label(name, 23, Palette.TEXT, true))
+	_character_box.add_child(Kit.label(name, 22, Palette.TEXT, true))
 	if role != "":
 		_character_box.add_child(Kit.muted(role, true))
-	var facts := Kit.vbox(4)
-	var age := int(c.get("age", 0))
-	var rows := [
-		["Возраст", "%d" % age if age > 0 else "—"],
-		["Одежда", str(c.get("clothes", "—"))],
-		["Дом", GameState.location_name()],
-	]
-	for row in rows:
-		var line := Kit.hbox(8)
-		var key := Kit.label(str(row[0]), 14, Palette.MUTED)
-		key.custom_minimum_size.x = 76
-		line.add_child(key)
-		var val := Kit.label(str(row[1]), 15, Palette.TEXT, true)
-		val.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		line.add_child(val)
-		facts.add_child(line)
+	var facts := Kit.vbox(3)
+	facts.add_child(_row("Возраст", "%d" % int(c.get("age", 0)) if int(c.get("age", 0)) > 0 else "—"))
+	facts.add_child(_row("Дом", GameState.home() if GameState.home() != "" else "—"))
+	facts.add_child(_row("Сейчас", GameState.location_name()))
+	facts.add_child(_row("Одежда", str(c.get("clothes", "—"))))
 	_character_box.add_child(facts)
-	var rels := GameState.relationship_rows()
-	if not rels.is_empty():
-		_character_box.add_child(Kit.separator())
-		_character_box.add_child(Kit.label("Отношения", 16, Palette.GOLD))
-		for r in rels:
-			var row := Kit.hbox(8)
-			var n := Kit.label(str(r.get("name", "")), 15, Palette.TEXT, true)
-			n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			row.add_child(n)
-			var level := int(r.get("level", 0))
-			var color := Palette.OK if level > 0 else (Palette.DANGER if level < 0 else Palette.MUTED)
-			row.add_child(Kit.label(GameState.rel_label(level), 13, color))
-			_character_box.add_child(row)
+	_character_box.add_child(Kit.separator())
+	_character_box.add_child(Kit.label("Счета и доходы", 15, Palette.GOLD))
+	var labels: Dictionary = GameState.world.get("finance_labels", {})
+	var finances := Kit.vbox(3)
+	finances.add_child(_row(str(labels.get("cash", "Наличные")), GameState.format_money(GameState.cash()), Palette.GOLD))
+	finances.add_child(_row(str(labels.get("bank", "В банке")), GameState.format_money(GameState.bank())))
+	finances.add_child(_row(str(labels.get("trust", "Резерв")), GameState.format_money(GameState.trust())))
+	if GameState.yearly_income() != 0:
+		finances.add_child(_row("Доход", GameState.format_money(GameState.yearly_income()) + "/год"))
+	_character_box.add_child(finances)
+	var income: Array = GameState.finances.get("income", [])
+	if not income.is_empty():
+		var lines: PackedStringArray = []
+		for inc_v in income:
+			if inc_v is Dictionary:
+				lines.append("%s — %s/год" % [str(inc_v.get("src", "")), GameState.format_money(int(inc_v.get("per_year_minor", 0)))])
+		if not lines.is_empty():
+			_character_box.add_child(Kit.small("\n".join(lines), Palette.MUTED))
+	var prop: Array = GameState.finances.get("property", [])
+	if not prop.is_empty():
+		var plines: PackedStringArray = []
+		for p_v in prop:
+			if p_v is Dictionary:
+				plines.append("• " + str(p_v.get("note", p_v.get("id", ""))))
+		if not plines.is_empty():
+			_character_box.add_child(Kit.small("Собственность:\n" + "\n".join(plines), Palette.MUTED))
+	_character_box.add_child(Kit.separator())
+	_character_box.add_child(Kit.label("Умения", 15, Palette.GOLD))
 	var skills: Array = c.get("skills", [])
-	if not skills.is_empty():
-		_character_box.add_child(Kit.separator())
-		_character_box.add_child(Kit.label("Умения", 16, Palette.GOLD))
+	if skills.is_empty():
+		_character_box.add_child(Kit.small("—", Palette.MUTED))
+	else:
 		var wrap := Kit.hbox(6)
-		wrap.add_theme_constant_override("separation", 6)
 		var count := 0
 		for s in skills:
 			wrap.add_child(Kit.chip(str(s)))
 			count += 1
-			if count >= 4:
+			if count >= 3:
 				_character_box.add_child(wrap)
 				wrap = Kit.hbox(6)
 				count = 0
@@ -109,100 +149,175 @@ func _refresh_character() -> void:
 			_character_box.add_child(wrap)
 	var abilities: Array = c.get("abilities", [])
 	if not abilities.is_empty():
-		_character_box.add_child(Kit.label("Особенности", 16, Palette.GOLD))
+		_character_box.add_child(Kit.label("Особенности", 15, Palette.GOLD))
 		for a in abilities:
 			_character_box.add_child(Kit.small("• " + str(a), Palette.TEXT))
-	var ts := Kit.label("Хроника: %d ходов" % GameState.turn_number(), 13, Palette.MUTED)
 	_character_box.add_child(Kit.separator())
-	_character_box.add_child(ts)
+	_character_box.add_child(Kit.small("Хроника: %d ходов" % GameState.turn_number(), Palette.MUTED))
 
 func _refresh_inventory() -> void:
 	Kit.clear(_inventory_box)
 	var slots := int(GameState.inventory_slots)
+	var display := GameState.inventory_display()
 	var head := Kit.hbox(8)
-	head.add_child(Kit.label("Сумка", 20, Palette.GOLD))
+	head.add_child(Kit.label("Сумка", 19, Palette.GOLD))
 	head.add_child(Kit.spacer())
-	head.add_child(Kit.label("%d / %d" % [GameState.inventory.size(), slots], 14, Palette.MUTED))
+	head.add_child(Kit.label("%d / %d" % [mini(display.size(), slots), slots], 13, Palette.MUTED))
 	_inventory_box.add_child(head)
-	var grid := Kit.grid(4, 8, 8)
-	for item_v in GameState.inventory:
-		var item: Dictionary = item_v
-		var cell := Kit.panel("InsetPanel")
-		cell.custom_minimum_size = Vector2(0, 92)
-		var box := Kit.vbox(4)
-		box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		var emoji := Kit.label(GameState.item_emoji(item), 26, Palette.TEXT)
-		emoji.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		box.add_child(emoji)
-		var nm := Kit.label(Kit.shorten(GameState.item_name(item), 16), 12, Palette.TEXT, true)
-		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		box.add_child(nm)
-		var qty := int(item.get("qty", 1))
-		if qty > 1:
-			var q := Kit.label("×%d" % qty, 12, Palette.GOLD)
-			q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			box.add_child(q)
-		cell.add_child(box)
-		grid.add_child(cell)
-	var empty := maxi(0, slots - GameState.inventory.size())
+	var grid := Kit.grid(4, 6, 6)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for item_v in display:
+		grid.add_child(_item_slot(item_v))
+	var empty := maxi(0, slots - display.size())
 	for i in range(empty):
-		var cell := Kit.panel("InsetPanel")
-		cell.custom_minimum_size = Vector2(0, 92)
-		var q := Kit.label("·", 24, Color(Palette.MUTED, 0.35))
-		q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		q.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		cell.add_child(q)
+		var cell := DashedSlotType.new()
+		cell.custom_minimum_size = Vector2(0, 96)
+		var plus := Kit.label("+", 24, Color(Palette.MUTED, 0.55))
+		plus.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		plus.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		plus.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		plus.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cell.add_child(plus)
 		grid.add_child(cell)
 	_inventory_box.add_child(grid)
-	if GameState.inventory.is_empty():
-		_inventory_box.add_child(Kit.small("Пусто. Предметы появятся, когда вы их получите.", Palette.MUTED))
+	_inventory_box.add_child(Kit.small("Наличные — предмет «кошелёк». Банк, резерв и доходы — во вкладке «Герой».", Palette.MUTED))
 
-func _refresh_wallet() -> void:
-	Kit.clear(_wallet_box)
-	var cur: Dictionary = GameState.world.get("currency", {})
-	var labels: Dictionary = GameState.world.get("finance_labels", {})
-	_wallet_box.add_child(Kit.label("Кошелёк", 20, Palette.GOLD))
-	_wallet_box.add_child(Kit.label(GameState.format_money(GameState.cash()), 30, Palette.TEXT, true))
-	_wallet_box.add_child(Kit.small(str(labels.get("cash", "Наличные")) + " · " + str(cur.get("major", "")), Palette.MUTED))
-	var bank := Kit.panel("InsetPanel")
-	var bank_box := Kit.vbox(5)
-	bank_box.add_child(Kit.small(str(labels.get("bank", "В банке"))))
-	bank_box.add_child(Kit.label(GameState.format_money(GameState.bank()), 20, Palette.TEXT))
-	bank.add_child(bank_box)
-	_wallet_box.add_child(bank)
-	var trust := Kit.panel("InsetPanel")
-	var trust_box := Kit.vbox(5)
-	trust_box.add_child(Kit.small(str(labels.get("trust", "Резерв"))))
-	trust_box.add_child(Kit.label(GameState.format_money(GameState.trust()), 20, Palette.TEXT))
-	trust.add_child(trust_box)
-	_wallet_box.add_child(trust)
-	var income: Array = GameState.finances.get("income", [])
-	if not income.is_empty():
-		_wallet_box.add_child(Kit.separator())
-		_wallet_box.add_child(Kit.label("Доходы", 16, Palette.GOLD))
-		for inc_v in income:
-			if not (inc_v is Dictionary):
-				continue
-			var inc: Dictionary = inc_v
-			var row := Kit.hbox(6)
-			var src := Kit.label(str(inc.get("src", "")), 14, Palette.TEXT, true)
-			src.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			row.add_child(src)
-			row.add_child(Kit.label(GameState.format_money(int(inc.get("per_year_minor", 0))) + "/год", 13, Palette.MUTED))
-			_wallet_box.add_child(row)
-	var prop: Array = GameState.finances.get("property", [])
-	if not prop.is_empty():
-		_wallet_box.add_child(Kit.separator())
-		_wallet_box.add_child(Kit.label("Собственность", 16, Palette.GOLD))
-		for p_v in prop:
-			if not (p_v is Dictionary):
-				continue
-			var p: Dictionary = p_v
-			_wallet_box.add_child(Kit.small("• " + str(p.get("note", p.get("id", ""))), Palette.TEXT))
-	var total := GameState.total_money()
-	_wallet_box.add_child(Kit.separator())
-	var total_row := Kit.hbox(6)
-	total_row.add_child(Kit.label(str(labels.get("total", "Всего")), 15, Palette.MUTED))
-	total_row.add_child(Kit.spacer())
-	total_row.add_child(Kit.label(GameState.format_money(total), 17, Palette.GOLD))
-	_wallet_box.add_child(total_row)
+func _item_slot(item: Dictionary) -> Button:
+	var b := Kit.button("")
+	b.theme_type_variation = "ItemSlot"
+	b.custom_minimum_size = Vector2(0, 96)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.tooltip_text = "%s\n%s" % [GameState.item_name(item), GameState.item_description(item)]
+	b.pressed.connect(_show_item.bind(item))
+	var root := Control.new()
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(root)
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 3)
+	margin.add_theme_constant_override("margin_right", 3)
+	margin.add_theme_constant_override("margin_top", 3)
+	margin.add_theme_constant_override("margin_bottom", 3)
+	root.add_child(margin)
+	var box := Kit.vbox(1)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	margin.add_child(box)
+	var emoji := Kit.label(GameState.item_emoji(item), 29, Palette.TEXT)
+	emoji.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	emoji.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(emoji)
+	var nm := Kit.label(GameState.item_name(item), 11, Palette.TEXT, true)
+	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	nm.max_lines_visible = 2
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(nm)
+	var qty := Kit.label("", 11, Palette.GOLD)
+	qty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	qty.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if bool(item.get("is_cash", false)) or str(item.get("id", "")) == "wallet":
+		qty.text = GameState.format_money(GameState.cash())
+	else:
+		var n := int(item.get("qty", 1))
+		qty.text = "×%d" % n if n > 1 else ""
+	box.add_child(qty)
+	return b
+
+func _refresh_relations() -> void:
+	Kit.clear(_relations_box)
+	var rows := GameState.relationship_rows()
+	if rows.is_empty():
+		_relations_box.add_child(Kit.label("Отношения", 19, Palette.GOLD))
+		_relations_box.add_child(Kit.small("—", Palette.MUTED))
+		return
+	for group in GameState.relationship_groups():
+		var gid := str(group.get("id", ""))
+		var group_rows: Array = []
+		for r in rows:
+			if str(r.get("group", "other")) == gid:
+				group_rows.append(r)
+		if group_rows.is_empty():
+			continue
+		_relations_box.add_child(Kit.label(str(group.get("name", gid)), 15, Palette.GOLD))
+		for r in group_rows:
+			_relations_box.add_child(_relation_row(r))
+
+func _relation_row(r: Dictionary) -> Button:
+	var b := Kit.button("")
+	b.theme_type_variation = "RowButton"
+	b.custom_minimum_size = Vector2(0, 58)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.tooltip_text = str(r.get("note", ""))
+	b.pressed.connect(_show_relation.bind(r))
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_top", 4)
+	margin.add_theme_constant_override("margin_bottom", 4)
+	b.add_child(margin)
+	var row := Kit.hbox(7)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(row)
+	var em := Kit.label(str(r.get("emoji", "•")), 20, Palette.TEXT)
+	em.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(em)
+	var text := Kit.vbox(0)
+	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(text)
+	var n := Kit.label(str(r.get("name", "")), 14, Palette.TEXT)
+	n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	n.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	n.clip_text = true
+	n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text.add_child(n)
+	var note := str(r.get("note", "")).strip_edges()
+	var sub := str(r.get("type", "")).strip_edges()
+	if note != "":
+		sub = (sub + " · " + note) if sub != "" else note
+	var st := Kit.small(sub, Palette.MUTED)
+	st.autowrap_mode = TextServer.AUTOWRAP_OFF
+	st.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	st.clip_text = true
+	st.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text.add_child(st)
+	var level := clampi(int(r.get("level", 0)), 0, 5)
+	var dots := Kit.label("●".repeat(level) + "○".repeat(5 - level), 13, Palette.GOLD)
+	dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(dots)
+	return b
+
+func _show_item(item: Dictionary) -> void:
+	var d := AcceptDialog.new()
+	d.title = "%s %s" % [GameState.item_emoji(item), GameState.item_name(item)]
+	d.dialog_autowrap = true
+	d.ok_button_text = "Закрыть"
+	var qty := "Наличные: " + GameState.format_money(GameState.cash()) if bool(item.get("is_cash", false)) else "Количество: %d" % int(item.get("qty", 1))
+	d.dialog_text = "%s\n\n%s" % [qty, GameState.item_description(item)]
+	add_child(d)
+	d.confirmed.connect(d.queue_free)
+	d.canceled.connect(d.queue_free)
+	d.popup_centered(Vector2i(520, 280))
+
+func _show_relation(r: Dictionary) -> void:
+	var d := AcceptDialog.new()
+	d.title = "%s %s" % [str(r.get("emoji", "•")), str(r.get("name", ""))]
+	d.dialog_autowrap = true
+	d.ok_button_text = "Закрыть"
+	var level := clampi(int(r.get("level", 0)), 0, 5)
+	d.dialog_text = "%s · %s\n\n%s\n\nБлизость: %s (%d/5)" % [
+		str(r.get("type", "")),
+		str(r.get("group_name", "")),
+		str(r.get("note", "")) if str(r.get("note", "")) != "" else "—",
+		GameState.rel_label(level),
+		level,
+	]
+	add_child(d)
+	d.confirmed.connect(d.queue_free)
+	d.canceled.connect(d.queue_free)
+	d.popup_centered(Vector2i(500, 280))

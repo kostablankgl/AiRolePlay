@@ -7,6 +7,7 @@ var _template_box: VBoxContainer
 var _name_edit: LineEdit
 var _age_spin: SpinBox
 var _clothes_edit: LineEdit
+var _home_edit: LineEdit
 var _date_edit: LineEdit
 var _location_option: OptionButton
 var _preview: VBoxContainer
@@ -20,7 +21,7 @@ func _ready() -> void:
 	_world = WorldDB.get_world(wid)
 	if _world.is_empty():
 		toast("Мир не найден", true)
-		go("res://scenes/world_select.tscn")
+		go.call_deferred("res://scenes/world_select.tscn")
 		return
 	_templates = WorldDB.get_start_templates(_world)
 	_build()
@@ -86,6 +87,10 @@ func _build() -> void:
 	_clothes_edit.placeholder_text = "Во что вы одеты"
 	_clothes_edit.custom_minimum_size.y = 50
 	form.add_child(Kit.field_row("Одежда", _clothes_edit))
+	_home_edit = LineEdit.new()
+	_home_edit.placeholder_text = "Где вы живёте"
+	_home_edit.custom_minimum_size.y = 50
+	form.add_child(Kit.field_row("Дом", _home_edit))
 	_date_edit = LineEdit.new()
 	_date_edit.placeholder_text = "ГГГГ-ММ-ДД"
 	_date_edit.custom_minimum_size.y = 50
@@ -149,6 +154,7 @@ func _select_template(index: int) -> void:
 		_name_edit.text = ""
 		_age_spin.value = 25
 		_clothes_edit.text = ""
+		_home_edit.text = str(_world.get("default_home", ""))
 		_date_edit.text = _default_date()
 		_pick_location(_default_location())
 		_refresh_preview({})
@@ -161,6 +167,7 @@ func _select_template(index: int) -> void:
 	_name_edit.text = str(c.get("name", t.get("name", "")))
 	_age_spin.value = int(c.get("age", 25))
 	_clothes_edit.text = str(c.get("clothes", ""))
+	_home_edit.text = str(c.get("home", t.get("home", _world.get("default_home", ""))))
 	_date_edit.text = str(t.get("start_date", _default_date()))
 	_pick_location(str(t.get("start_location", _default_location())))
 	_refresh_preview(t)
@@ -188,6 +195,13 @@ func _refresh_preview(t: Dictionary) -> void:
 	if t.is_empty():
 		_preview.add_child(Kit.small("Это свободная роль. Деньги, вещи и связи будут как у первой готовой роли мира.", Palette.MUTED))
 		return
+	var home := str(t.get("home", _world.get("default_home", "")))
+	if home != "":
+		var hrow := Kit.hbox(8)
+		hrow.add_child(Kit.small("Дом"))
+		hrow.add_child(Kit.spacer())
+		hrow.add_child(Kit.label(home, 15, Palette.TEXT, true))
+		_preview.add_child(hrow)
 	var fin: Dictionary = t.get("finances", {})
 	if not fin.is_empty():
 		var flabels: Dictionary = _world.get("finance_labels", {})
@@ -243,6 +257,7 @@ func _start_story() -> void:
 			"title": "новое лицо в этом мире",
 			"is_heir": false,
 			"clothes": _clothes_edit.text.strip_edges(),
+			"home": _home_edit.text.strip_edges(),
 			"skills": [],
 			"abilities": [],
 		}
@@ -251,6 +266,7 @@ func _start_story() -> void:
 		char["name"] = name
 		char["age"] = int(_age_spin.value)
 		char["clothes"] = _clothes_edit.text.strip_edges()
+		char["home"] = _home_edit.text.strip_edges()
 		if str(char.get("title", "")) == "":
 			char["title"] = str(template.get("role", ""))
 	var loc_id := _default_location()
@@ -271,6 +287,7 @@ func _start_story() -> void:
 		"location": loc_id,
 		"date": date,
 		"intro": intro,
+		"home": _home_edit.text.strip_edges(),
 	}
 	GameState.start_new(_world, template, char, opts)
 	if not SaveManager.save_game(false):

@@ -21,6 +21,7 @@ GameState="*res://autoload/game_state.gd"
 SaveManager="*res://autoload/save_manager.gd"
 PromptBuilder="*res://autoload/prompt_builder.gd"
 SceneParser="*res://autoload/scene_parser.gd"
+OpenRouterClient="*res://autoload/openrouter_client.gd"
 AIConnector="*res://autoload/ai_connector.gd"
 
 [display]

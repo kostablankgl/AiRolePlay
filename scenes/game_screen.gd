@@ -12,13 +12,12 @@ var input_bar
 var _world_title: Label
 var _world_sub: Label
 var _date_label: Label
-var _money_label: Label
-var _ram_label: Label
+var _money_button: Button
 var _model_label: Label
 var _banner: PanelContainer
 var _banner_label: Label
 var _menu: PopupMenu
-var _busy := false
+var _menu_btn: Button
 var _generating := false
 var _pending_action := ""
 var _pending_continuation := false
@@ -31,81 +30,92 @@ var _save_flash: Label
 
 func _ready() -> void:
 	if not GameState.is_loaded():
-		go("res://scenes/main_menu.tscn")
+		go.call_deferred("res://scenes/main_menu.tscn")
 		return
 	_build()
 	_connect_ai()
 	GameState.state_changed.connect(_on_state_changed)
-	RamMonitor.updated.connect(_refresh_ram)
 	_refresh_header()
-	_refresh_ram()
 	var turn := GameState.turn_number()
 	if turn == 0:
 		_pending_intro = true
 		story.set_placeholder(GameState.current_scene)
 		choices.set_loading("Загружаю модель…")
-		input_bar.set_busy(true)
-		_banner.visible = true
-		_banner_label.text = "Загружаю локальную модель. Первый запуск: 2 ГБ распаковываются в память телефона."
+		_set_input_state("loading")
+		_show_banner("Подготавливаю модель…", Palette.WARN)
 	else:
 		story.set_scene(GameState.current_scene)
 		choices.set_choices(GameState.current_choices)
-		input_bar.set_busy(true)
-		_banner.visible = true
-		_banner_label.text = "Загружаю локальную модель…"
+		_set_input_state("loading")
+		_show_banner("Загружаю модель…", Palette.WARN)
 	AIConnector.initialize()
 
 func _build() -> void:
-	var outer := setup_page()
+	var outer := setup_page(8, 8, 8)
 	var top := Kit.panel("TopBarPanel")
-	var top_row := Kit.hbox(12)
+	top.custom_minimum_size.y = 56
+	var top_row := Kit.hbox(8)
 	top.add_child(top_row)
-	var menu_btn := Kit.button("☰", "GhostButton")
-	menu_btn.custom_minimum_size = Vector2(52, 48)
-	menu_btn.pressed.connect(_open_menu)
-	top_row.add_child(menu_btn)
+	_menu_btn = Kit.button("☰", "GhostButton")
+	_menu_btn.custom_minimum_size = Vector2(48, 44)
+	_menu_btn.pressed.connect(_open_menu)
+	top_row.add_child(_menu_btn)
 	var titles := Kit.vbox(0)
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_world_title = Kit.label("", 21, Palette.TEXT)
+	_world_title = Kit.label("", 20, Palette.TEXT)
+	_world_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_world_title.clip_text = true
 	_world_sub = Kit.small("", Palette.MUTED)
+	_world_sub.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_world_sub.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_world_sub.clip_text = true
 	titles.add_child(_world_title)
 	titles.add_child(_world_sub)
 	top_row.add_child(titles)
-	_date_label = Kit.label("", 15, Palette.MUTED)
+	_date_label = Kit.label("", 14, Palette.MUTED)
 	_date_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	top_row.add_child(_date_label)
-	_money_label = Kit.label("", 17, Palette.GOLD)
-	_money_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	top_row.add_child(_money_label)
-	_ram_label = Kit.label("", 13, Palette.MUTED)
-	_ram_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	top_row.add_child(_ram_label)
+	_money_button = Kit.button("", "GhostButton")
+	_money_button.custom_minimum_size = Vector2(150, 44)
+	_money_button.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_money_button.tooltip_text = "Открыть сумку и кошелёк"
+	_money_button.add_theme_color_override("font_color", Palette.GOLD)
+	_money_button.pressed.connect(_open_wallet)
+	top_row.add_child(_money_button)
 	_model_label = Kit.label("ИИ: —", 13, Palette.MUTED)
+	_model_label.custom_minimum_size.x = 150
+	_model_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_model_label.clip_text = true
 	_model_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	top_row.add_child(_model_label)
+	_save_flash = Kit.small("", Palette.MUTED)
+	_save_flash.custom_minimum_size.x = 92
+	_save_flash.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	top_row.add_child(_save_flash)
 	var settings_btn := Kit.button("⚙", "GhostButton")
-	settings_btn.custom_minimum_size = Vector2(52, 48)
+	settings_btn.custom_minimum_size = Vector2(48, 44)
+	settings_btn.tooltip_text = "Настройки"
 	settings_btn.pressed.connect(_open_settings)
 	top_row.add_child(settings_btn)
 	outer.add_child(top)
 
-	var middle := Kit.hbox(12)
+	var middle := Kit.hbox(8)
 	middle.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(middle)
-	var left := Kit.vbox(10)
+	var left := Kit.vbox(8)
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	middle.add_child(left)
 	_banner = Kit.panel("InsetPanel")
 	_banner.visible = false
-	var brow := Kit.hbox(10)
+	var brow := Kit.hbox(8)
 	_banner_label = Kit.small("", Palette.WARN)
 	_banner_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	brow.add_child(_banner_label)
 	var retry := Kit.button("Повторить", "GhostButton")
-	retry.custom_minimum_size = Vector2(120, 40)
+	retry.custom_minimum_size = Vector2(110, 38)
 	retry.pressed.connect(func() -> void:
-		_banner_label.text = "Пробую снова…"
+		_show_banner("Пробую снова…", Palette.WARN)
 		AIConnector.initialize()
 	)
 	brow.add_child(retry)
@@ -113,26 +123,34 @@ func _build() -> void:
 	left.add_child(_banner)
 	story = StoryPanelType.new()
 	left.add_child(story)
-	status_panel = StatusPanelType.new()
-	middle.add_child(status_panel)
-
-	var bottom := Kit.panel("CardPanel")
-	var bbox := Kit.vbox(8)
-	bottom.add_child(bbox)
-	var bhead := Kit.hbox(8)
-	bhead.add_child(Kit.label("Что вы сделаете?", 18, Palette.GOLD))
-	bhead.add_child(Kit.spacer())
-	_save_flash = Kit.small("", Palette.MUTED)
-	bhead.add_child(_save_flash)
-	bbox.add_child(bhead)
-	choices = ChoiceButtonsType.new()
-	bbox.add_child(choices)
-	choices.choice_selected.connect(_on_choice)
 	input_bar = InputBarType.new()
-	bbox.add_child(input_bar)
+	left.add_child(input_bar)
 	input_bar.submitted.connect(_on_free_text)
 	input_bar.continuation_requested.connect(_on_continue)
-	outer.add_child(bottom)
+
+	var right := Kit.vbox(8)
+	right.custom_minimum_size = Vector2(380, 0)
+	right.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	middle.add_child(right)
+	status_panel = StatusPanelType.new()
+	status_panel.custom_minimum_size = Vector2(380, 260)
+	status_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	status_panel.size_flags_stretch_ratio = 1.0
+	right.add_child(status_panel)
+
+	var choices_panel := Kit.panel("CardPanel")
+	choices_panel.custom_minimum_size = Vector2(380, 260)
+	choices_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	choices_panel.size_flags_stretch_ratio = 1.15
+	var cbox := Kit.vbox(6)
+	choices_panel.add_child(cbox)
+	cbox.add_child(Kit.label("Что вы сделаете?", 17, Palette.GOLD))
+	var cscroll := Kit.scroll()
+	cbox.add_child(cscroll)
+	choices = ChoiceButtonsType.new()
+	cscroll.add_child(choices)
+	choices.choice_selected.connect(_on_choice)
+	right.add_child(choices_panel)
 
 	_menu = PopupMenu.new()
 	_menu.add_item("Сохранить", 0)
@@ -144,54 +162,68 @@ func _build() -> void:
 
 func _connect_ai() -> void:
 	AIConnector.status_changed.connect(_on_ai_status)
+	AIConnector.load_started.connect(_on_load_started)
 	AIConnector.model_loaded.connect(_on_model_loaded)
 	AIConnector.model_failed.connect(_on_model_failed)
 	AIConnector.generation_started.connect(_on_generation_started)
 	AIConnector.token_received.connect(_on_token)
 	AIConnector.generation_finished.connect(_on_generation_finished)
 	AIConnector.generation_failed.connect(_on_generation_failed)
-	AIConnector.busy_changed.connect(_on_ai_busy)
 	AIConnector.copy_progress.connect(_on_copy_progress)
 
+func _set_input_state(state: String, detail: String = "") -> void:
+	if input_bar != null:
+		input_bar.set_state(state, detail)
+
+func _show_banner(text: String, color: Color) -> void:
+	if _banner == null:
+		return
+	_banner.visible = true
+	_banner_label.text = text
+	_banner_label.add_theme_color_override("font_color", color)
+
+func _set_model_state(text: String, color: Color) -> void:
+	_model_label.text = text
+	_model_label.add_theme_color_override("font_color", color)
+
 func _on_ai_status(text: String) -> void:
-	_model_label.text = "ИИ: " + Kit.shorten(text, 42)
-	if not _generating and text != "Модель готова":
-		_banner.visible = true
-		_banner_label.text = text
-		_banner_label.add_theme_color_override("font_color", Palette.WARN)
-	elif text == "Модель готова":
-		_banner.visible = false
-		_model_label.add_theme_color_override("font_color", Palette.OK)
+	if AIConnector.is_ready():
+		_set_model_state("ИИ: готов", Palette.OK)
+	elif text.to_lower().contains("ошиб") or text.to_lower().contains("не удалось"):
+		_set_model_state("ИИ: ошибка", Palette.DANGER)
+	else:
+		_set_model_state("ИИ: " + Kit.shorten(text, 28), Palette.WARN)
+
+func _on_load_started() -> void:
+	_set_model_state("ИИ: загрузка…", Palette.WARN)
+	_show_banner("Загружаю модель…", Palette.WARN)
+	_set_input_state("loading", "Загрузка модели…")
+	choices.set_loading("Загружаю модель…")
 
 func _on_copy_progress(percent: int) -> void:
-	_banner.visible = true
-	_banner_label.text = "Распаковываю модель: %d%%. Не закрывайте приложение." % percent
+	_set_model_state("ИИ: загрузка %d%%" % percent, Palette.WARN)
+	_show_banner("Распаковываю модель: %d%%. Не закрывайте приложение." % percent, Palette.WARN)
+	_set_input_state("loading", "Загрузка модели %d%%" % percent)
 
 func _on_model_loaded(_path: String) -> void:
-	_model_label.text = "ИИ: готов"
-	_model_label.add_theme_color_override("font_color", Palette.OK)
-	_banner.visible = false
-	input_bar.set_busy(_generating)
-	choices.set_enabled(not _generating)
-	if not _generating and GameState.turn_number() > 0 and not GameState.current_choices.is_empty():
+	_set_model_state("ИИ: готов", Palette.OK)
+	if _banner != null:
+		_banner.visible = false
+	_set_input_state("ready")
+	if GameState.turn_number() > 0 and not GameState.current_choices.is_empty():
 		choices.set_choices(GameState.current_choices)
+		choices.set_enabled(not _generating)
 	if _pending_intro and not _generating and GameState.turn_number() == 0:
 		_start_intro()
 
 func _on_model_failed(message: String) -> void:
-	_model_label.text = "ИИ: ошибка"
-	_model_label.add_theme_color_override("font_color", Palette.DANGER)
-	_banner.visible = true
-	_banner_label.text = message
-	_banner_label.add_theme_color_override("font_color", Palette.DANGER)
-	input_bar.set_busy(true)
+	_set_model_state("ИИ: ошибка", Palette.DANGER)
+	_show_banner(message, Palette.DANGER)
+	_set_input_state("error", "Модель недоступна — откройте настройки")
 	choices.set_enabled(false)
 	if GameState.turn_number() == 0:
 		choices.set_loading("Модель недоступна")
 	toast(message, true)
-
-func _on_ai_busy(is_busy: bool) -> void:
-	_busy = is_busy
 
 func _on_state_changed() -> void:
 	_refresh_header()
@@ -206,20 +238,12 @@ func _refresh_header() -> void:
 	var loc := GameState.location_name()
 	_world_sub.text = (sub + " · " if sub != "" else "") + loc
 	_date_label.text = GameState.time_label()
-	_money_label.text = GameState.money_brief()
-	if _model_label.text == "":
-		_model_label.text = "ИИ: —"
-
-func _refresh_ram() -> void:
-	if _ram_label == null:
-		return
-	var color := Palette.MUTED
-	if RamMonitor.pressure >= 0.86:
-		color = Palette.DANGER
-	elif RamMonitor.pressure >= 0.72:
-		color = Palette.WARN
-	_ram_label.text = "RAM %s" % RamMonitor.format_gb(RamMonitor.available_mb)
-	_ram_label.add_theme_color_override("font_color", color)
+	_money_button.text = GameState.format_money(GameState.cash())
+	_money_button.tooltip_text = "Наличные: %s\nБанк: %s\nРезерв: %s" % [
+		GameState.format_money(GameState.cash()),
+		GameState.format_money(GameState.bank()),
+		GameState.format_money(GameState.trust()),
+	]
 
 func _start_intro() -> void:
 	if AIConnector.busy or not AIConnector.is_ready():
@@ -233,9 +257,9 @@ func _start_intro() -> void:
 	story.begin_stream()
 	story.set_placeholder("Мир открывается…")
 	choices.set_loading("Мастер пишет первый ход…")
-	input_bar.set_busy(true)
+	_set_input_state("generating", "Мастер пишет первый ход…")
 	var prompt := PromptBuilder.build_intro_prompt(GameState.current_scene)
-	if not AIConnector.generate(prompt.text):
+	if not AIConnector.generate(prompt.text, { "messages": prompt.get("messages", []) }):
 		_generating = false
 		_restore_after_failure()
 
@@ -253,9 +277,9 @@ func _begin_turn(action: String, continuation: bool = false) -> void:
 	story.begin_stream()
 	story.set_placeholder("Мастер пишет…")
 	choices.set_loading("Мастер пишет…")
-	input_bar.set_busy(true)
+	_set_input_state("generating")
 	var prompt := PromptBuilder.build_prompt(action, { "continuation": continuation })
-	if not AIConnector.generate(prompt.text):
+	if not AIConnector.generate(prompt.text, { "messages": prompt.get("messages", []) }):
 		_generating = false
 		_restore_after_failure()
 
@@ -274,8 +298,7 @@ func _on_continue() -> void:
 	_begin_turn("Продолжи сцену с того же момента, не повторяя написанное.", true)
 
 func _on_generation_started() -> void:
-	_model_label.text = "ИИ: пишет…"
-	_model_label.add_theme_color_override("font_color", Palette.GOLD)
+	_set_model_state("ИИ: пишет…", Palette.GOLD)
 
 func _on_token(token: String) -> void:
 	if not _generating:
@@ -337,10 +360,11 @@ func _on_generation_finished(text: String) -> void:
 		GameState.record_turn(_pending_action, scene, scene_choices, report)
 	story.set_scene(scene)
 	choices.set_choices(scene_choices)
-	input_bar.set_busy(false)
+	choices.set_enabled(true)
+	_set_input_state("ready")
 	input_bar.clear()
-	_model_label.text = "ИИ: готов"
-	_model_label.add_theme_color_override("font_color", Palette.OK)
+	var tok := AIConnector.last_tok_s
+	_set_model_state("ИИ: готов" + (" · %.1f tok/s" % tok if tok > 0.0 else ""), Palette.OK)
 	_pending_intro = false
 	status_panel.refresh()
 	_refresh_header()
@@ -364,10 +388,9 @@ func _restore_after_failure() -> void:
 		choices.set_choices(GameState.current_choices)
 	else:
 		choices.set_choices(WorldDB.get_default_choices(GameState.world))
-	input_bar.set_busy(false)
-	_model_label.text = "ИИ: ошибка"
-	_model_label.add_theme_color_override("font_color", Palette.DANGER)
-	_banner.visible = true
+	choices.set_enabled(true)
+	_set_input_state("ready" if AIConnector.is_ready() else "error")
+	_set_model_state("ИИ: ошибка", Palette.DANGER)
 
 func _autosave() -> void:
 	if not GameState.is_loaded():
@@ -376,10 +399,18 @@ func _autosave() -> void:
 		var t := Time.get_time_dict_from_system()
 		_save_flash.text = "Сохранено %02d:%02d" % [int(t.get("hour", 0)), int(t.get("minute", 0))]
 	else:
-		_save_flash.text = "Не удалось сохранить"
+		_save_flash.text = "Не сохранено"
+
+func _open_wallet() -> void:
+	if status_panel != null:
+		status_panel.open_wallet()
 
 func _open_menu() -> void:
-	_menu.popup_centered(Vector2i(320, 240))
+	if _menu_btn == null:
+		return
+	var r := _menu_btn.get_global_rect()
+	_menu.position = Vector2i(int(r.position.x), int(r.position.y + r.size.y + 4))
+	_menu.popup()
 
 func _on_menu_pressed(id: int) -> void:
 	match id:

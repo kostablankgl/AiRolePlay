@@ -24,15 +24,15 @@ func _enter_tree() -> void:
 	glow.offset_bottom = 0
 	add_child(glow)
 
-func setup_page() -> VBoxContainer:
+func setup_page(margin_h: int = 24, margin_v: int = 18, separation: int = 14) -> VBoxContainer:
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 24)
-	margin.add_theme_constant_override("margin_right", 24)
-	margin.add_theme_constant_override("margin_top", 18)
-	margin.add_theme_constant_override("margin_bottom", 18)
+	margin.add_theme_constant_override("margin_left", margin_h)
+	margin.add_theme_constant_override("margin_right", margin_h)
+	margin.add_theme_constant_override("margin_top", margin_v)
+	margin.add_theme_constant_override("margin_bottom", margin_v)
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(margin)
-	var outer := Kit.vbox(14)
+	var outer := Kit.vbox(separation)
 	outer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	outer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_child(outer)
@@ -51,10 +51,15 @@ func header(text: String, back_path: String = "") -> HBoxContainer:
 	return row
 
 func go(path: String) -> void:
-	get_tree().change_scene_to_file(path)
+	get_tree().call_deferred("change_scene_to_file", path)
+
+var _toast_panel: Control
 
 func toast(message: String, is_error: bool = false) -> void:
+	if _toast_panel != null and is_instance_valid(_toast_panel):
+		_toast_panel.queue_free()
 	var p := Kit.panel("TopBarPanel")
+	_toast_panel = p
 	p.anchor_left = 0.5
 	p.anchor_right = 0.5
 	p.anchor_top = 1.0
@@ -68,6 +73,10 @@ func toast(message: String, is_error: bool = false) -> void:
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	p.add_child(Kit.label(message, 16, Palette.DANGER if is_error else Palette.TEXT, true))
 	add_child(p)
+	get_tree().create_timer(3.2).timeout.connect(func() -> void:
+		if is_instance_valid(p):
+			p.queue_free()
+	)
 	var timer := get_tree().create_timer(2.8)
 	await timer.timeout
 	if is_instance_valid(p):

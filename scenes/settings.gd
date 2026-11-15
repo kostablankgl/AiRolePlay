@@ -2,15 +2,21 @@ extends "res://ui/screen_base.gd"
 
 var _model_status: Label
 var _model_name: Label
-var _model_option: OptionButton
+var _models_box: VBoxContainer
 var _import_label: Label
 var _ram_bar: ProgressBar
 var _ram_label: Label
 var _ram_hint: Label
 var _advanced: VBoxContainer
-var _advanced_toggle: CheckBox
 var _controls: Dictionary = {}
 var _dialog: FileDialog
+var _provider_option: OptionButton
+var _or_key: LineEdit
+var _or_model: OptionButton
+var _or_manual: LineEdit
+var _or_status: Label
+var _delete_confirm: ConfirmationDialog
+var _pending_delete_path: String = ""
 var _import_thread: Thread
 var _import_src: String = ""
 var _import_dst: String = ""
@@ -25,6 +31,9 @@ func _ready() -> void:
 	AIConnector.status_changed.connect(_on_ai_status)
 	AIConnector.model_loaded.connect(_on_model_loaded)
 	AIConnector.model_failed.connect(_on_model_failed)
+	AIConnector.load_progress.connect(_on_load_progress)
+	OpenRouterClient.models_loaded.connect(_on_or_models_loaded)
+	OpenRouterClient.models_failed.connect(_on_or_models_failed)
 	RamMonitor.updated.connect(_refresh_ram)
 	_refresh_models()
 	_refresh_ram()
@@ -42,36 +51,69 @@ func _build() -> void:
 	var model := Kit.panel("CardPanel")
 	var mb := Kit.vbox(8)
 	model.add_child(mb)
-	mb.add_child(Kit.label("Модель", 22, Palette.GOLD))
+	mb.add_child(Kit.label("Модели", 22, Palette.GOLD))
 	_model_name = Kit.label("", 16, Palette.TEXT, true)
 	mb.add_child(_model_name)
 	_model_status = Kit.small("", Palette.MUTED)
 	mb.add_child(_model_status)
 	var mrow := Kit.hbox(8)
-	_model_option = OptionButton.new()
-	_model_option.custom_minimum_size = Vector2(0, 50)
-	_model_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_model_option.item_selected.connect(_on_model_selected)
-	mrow.add_child(_model_option)
 	var import := Kit.button("Импортировать .gguf", "GhostButton")
-	import.custom_minimum_size = Vector2(190, 50)
+	import.custom_minimum_size = Vector2(210, 48)
 	import.pressed.connect(_open_import)
 	mrow.add_child(import)
-	var load := Kit.button("Загрузить", "AccentButton")
-	load.custom_minimum_size = Vector2(130, 50)
-	load.pressed.connect(_load_model)
-	mrow.add_child(load)
-	var unload := Kit.button("Выгрузить", "GhostButton")
-	unload.custom_minimum_size = Vector2(130, 50)
-	unload.pressed.connect(func() -> void:
-		AIConnector.unload()
-	)
-	mrow.add_child(unload)
+	var refresh := Kit.button("Обновить список", "GhostButton")
+	refresh.custom_minimum_size = Vector2(170, 48)
+	refresh.pressed.connect(_refresh_models)
+	mrow.add_child(refresh)
+	var unload_all := Kit.button("Выгрузить всё", "GhostButton")
+	unload_all.custom_minimum_size = Vector2(160, 48)
+	unload_all.pressed.connect(func() -> void: AIConnector.unload())
+	mrow.add_child(unload_all)
 	mb.add_child(mrow)
 	_import_label = Kit.small("", Palette.MUTED)
 	mb.add_child(_import_label)
-	mb.add_child(Kit.small("Встроенная модель лежит в APK. При первом запуске она распаковывается в user://models. Другие .gguf можно положить туда же.", Palette.MUTED))
+	_models_box = Kit.vbox(6)
+	mb.add_child(_models_box)
+	mb.add_child(Kit.small("Все .gguf лежат только в user://models и не вшиваются в APK. Встроенная модель удаляется только вручную из файлов.", Palette.MUTED))
 	page.add_child(model)
+
+	var provider := Kit.panel("CardPanel")
+	var pb := Kit.vbox(8)
+	provider.add_child(pb)
+	pb.add_child(Kit.label("Провайдер ИИ", 22, Palette.GOLD))
+	var prow := Kit.hbox(8)
+	_provider_option = OptionButton.new()
+	_provider_option.custom_minimum_size = Vector2(240, 48)
+	_provider_option.add_item("Локальная модель", 0)
+	_provider_option.add_item("OpenRouter", 1)
+	_provider_option.item_selected.connect(_on_provider_selected)
+	prow.add_child(_provider_option)
+	pb.add_child(prow)
+	pb.add_child(Kit.small("OpenRouter — внешний сервис. Текст истории уходит на его сервер; локальный режим остаётся офлайн.", Palette.MUTED))
+	var key_row := Kit.hbox(8)
+	_or_key = LineEdit.new()
+	_or_key.secret = true
+	_or_key.placeholder_text = "API-ключ OpenRouter"
+	_or_key.custom_minimum_size = Vector2(0, 48)
+	_or_key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	key_row.add_child(_or_key)
+	var test := Kit.button("Проверить и обновить", "GhostButton")
+	test.custom_minimum_size = Vector2(220, 48)
+	test.pressed.connect(_test_openrouter)
+	key_row.add_child(test)
+	pb.add_child(key_row)
+	_or_model = OptionButton.new()
+	_or_model.custom_minimum_size = Vector2(0, 48)
+	_or_model.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_or_model.item_selected.connect(_on_model_selected)
+	pb.add_child(_or_model)
+	_or_manual = LineEdit.new()
+	_or_manual.placeholder_text = "Или id модели вручную, например google/gemini-2.0-flash-exp:free"
+	_or_manual.custom_minimum_size.y = 48
+	pb.add_child(_or_manual)
+	_or_status = Kit.small("", Palette.MUTED)
+	pb.add_child(_or_status)
+	page.add_child(provider)
 
 	var ram := Kit.panel("CardPanel")
 	var rb := Kit.vbox(6)
@@ -92,15 +134,14 @@ func _build() -> void:
 	gb.add_child(Kit.label("Генерация", 22, Palette.GOLD))
 	gb.add_child(_spin_row("Контекст (n_ctx)", "n_ctx", 1024, 8192, 128, 0))
 	gb.add_child(_spin_row("Потоки", "threads", 1, 8, 1, 0))
-	gb.add_child(_spin_row("Температура", "temperature", 0.0, 2.0, 0.05, 2))
+	gb.add_child(_spin_row("Температура", "temperature", 0.0, 2.0, 0.01, 2))
 	gb.add_child(_spin_row("Top-p", "top_p", 0.01, 1.0, 0.01, 2))
 	gb.add_child(_spin_row("Top-k", "top_k", 0, 200, 1, 0))
 	gb.add_child(_spin_row("Min-p", "min_p", 0.0, 1.0, 0.01, 2))
 	gb.add_child(_spin_row("Штраф повторов", "repeat_penalty", 0.8, 2.0, 0.01, 2))
-	gb.add_child(_spin_row("Макс. токенов ответа", "max_tokens", 64, 1024, 32, 0))
+	gb.add_child(_spin_row("Макс. токенов ответа", "max_tokens", 64, 1024, 1, 0))
 	var stream := CheckBox.new()
 	stream.text = "Показывать текст по мере генерации"
-	stream.button_pressed = true
 	_controls["streaming"] = stream
 	gb.add_child(stream)
 	var light := CheckBox.new()
@@ -109,17 +150,17 @@ func _build() -> void:
 	_controls["light_mode"] = light
 	gb.add_child(light)
 
-	_advanced_toggle = CheckBox.new()
-	_advanced_toggle.text = "Дополнительно"
-	_advanced_toggle.toggled.connect(func(on: bool) -> void: _advanced.visible = on)
-	gb.add_child(_advanced_toggle)
+	var adv_toggle := CheckBox.new()
+	adv_toggle.text = "Дополнительно"
+	adv_toggle.toggled.connect(func(on: bool) -> void: _advanced.visible = on)
+	gb.add_child(adv_toggle)
 	_advanced = Kit.vbox(8)
 	_advanced.visible = false
 	gb.add_child(_advanced)
 	_advanced.add_child(_spin_row("Batch (n_batch)", "n_batch", 32, 1024, 32, 0))
-	_advanced.add_child(_spin_row("Штраф: последние N", "penalty_last_n", -1, 1024, 16, 0))
-	_advanced.add_child(_spin_row("Frequency penalty", "frequency_penalty", -1.0, 2.0, 0.05, 2))
-	_advanced.add_child(_spin_row("Presence penalty", "presence_penalty", -1.0, 2.0, 0.05, 2))
+	_advanced.add_child(_spin_row("Штраф: последние N", "penalty_last_n", -1, 1024, 1, 0))
+	_advanced.add_child(_spin_row("Frequency penalty", "frequency_penalty", -1.0, 2.0, 0.01, 2))
+	_advanced.add_child(_spin_row("Presence penalty", "presence_penalty", -1.0, 2.0, 0.01, 2))
 	_advanced.add_child(_spin_row("Seed (-1 = случайный)", "seed", -1, 2147483647, 1, 0))
 	var mmap := CheckBox.new()
 	mmap.text = "mmap (экономит RAM, рекомендуется)"
@@ -129,6 +170,22 @@ func _build() -> void:
 	mlock.text = "mlock (держать модель в RAM)"
 	_controls["use_mlock"] = mlock
 	_advanced.add_child(mlock)
+	var flash := CheckBox.new()
+	flash.text = "Flash Attention"
+	_controls["flash_attn"] = flash
+	_advanced.add_child(flash)
+	var kv := OptionButton.new()
+	kv.add_item("f16", 0)
+	kv.add_item("q8_0", 1)
+	kv.add_item("q4_0", 2)
+	kv.custom_minimum_size = Vector2(180, 48)
+	_controls["kv_type"] = kv
+	_advanced.add_child(Kit.field_row("Тип KV-кэша", kv))
+	var repack := CheckBox.new()
+	repack.text = "Repack (если поддерживает сборка)"
+	_controls["use_repack"] = repack
+	_advanced.add_child(repack)
+	_advanced.add_child(Kit.small("Flash Attention, KV и repack применяются только если они включены в текущей сборке llama.cpp. Иначе параметр сохраняется, но движок его игнорирует.", Palette.MUTED))
 	page.add_child(gen)
 
 	var actions := Kit.hbox(8)
@@ -151,16 +208,19 @@ func _build() -> void:
 	_dialog.title = "Выберите .gguf"
 	_dialog.file_selected.connect(_start_import)
 	add_child(_dialog)
+	_delete_confirm = ConfirmationDialog.new()
+	_delete_confirm.title = "Удалить модель?"
+	_delete_confirm.ok_button_text = "Удалить"
+	_delete_confirm.cancel_button_text = "Отмена"
+	_delete_confirm.confirmed.connect(_confirm_delete_model)
+	add_child(_delete_confirm)
 
 func _spin_row(caption: String, key: String, min_v: float, max_v: float, step: float, decimals: int) -> HBoxContainer:
 	var spin := SpinBox.new()
 	spin.min_value = min_v
 	spin.max_value = max_v
 	spin.step = step
-	if decimals > 0:
-		spin.suffix = ""
-		spin.custom_arrow_step = step
-	spin.custom_minimum_size = Vector2(180, 50)
+	spin.custom_minimum_size = Vector2(180, 48)
 	spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_controls[key] = spin
 	return Kit.field_row(caption, spin)
@@ -173,41 +233,141 @@ func _load_values() -> void:
 			c.value = float(value)
 		elif c is CheckBox:
 			c.button_pressed = bool(value)
-	var path := str(SettingsManager.get_value("model_path", ""))
-	_model_name.text = "Встроенная модель: " + ModelManager.model_name() if path == "" else "Своя модель: " + path.get_file()
+		elif c is OptionButton:
+			if key == "kv_type":
+				var idx := 1
+				if str(value) == "f16":
+					idx = 0
+				elif str(value) == "q4_0":
+					idx = 2
+				c.select(idx)
+	_provider_option.select(1 if str(SettingsManager.get_value("ai_provider", "local")) == "openrouter" else 0)
+	_or_key.text = str(SettingsManager.get_value("openrouter_api_key", ""))
+	_or_manual.text = str(SettingsManager.get_value("openrouter_model", ""))
+	_model_name.text = "Локальная модель: " + ModelManager.model_name()
 
 func _refresh_models() -> void:
-	_model_option.clear()
-	_model_option.add_item("Встроенная модель (APK)", 0)
-	_model_option.set_item_metadata(0, "")
+	if _models_box == null:
+		return
+	Kit.clear(_models_box)
+	var models := ModelManager.list_models()
 	var current := str(SettingsManager.get_value("model_path", ""))
-	var dir := DirAccess.open("user://models")
-	var index := 0
-	if dir != null:
-		for f in dir.get_files():
-			if not f.to_lower().ends_with(".gguf"):
-				continue
-			index += 1
-			var rel := "user://models/" + f
-			_model_option.add_item(f, index)
-			_model_option.set_item_metadata(index, rel)
-			if rel == current:
-				_model_option.select(index)
-	if current == "":
-		_model_option.select(0)
+	if models.is_empty():
+		var empty := Kit.panel("InsetPanel")
+		var box := Kit.vbox(4)
+		box.add_child(Kit.label("Моделей нет", 16, Palette.TEXT))
+		box.add_child(Kit.small("Импортируйте .gguf или выберите OpenRouter. Новый APK больше не содержит модель внутри.", Palette.MUTED))
+		empty.add_child(box)
+		_models_box.add_child(empty)
+		_model_name.text = "Локальная модель: не выбрана"
+		return
+	for m in models:
+		_models_box.add_child(_model_row(m, current))
 
-func _on_model_selected(idx: int) -> void:
-	var path := str(_model_option.get_item_metadata(idx))
-	SettingsManager.set_value("model_path", path)
-	_model_name.text = "Встроенная модель: " + ModelManager.model_name() if path == "" else "Своя модель: " + path.get_file()
-	toast("Модель выбрана. Нажмите «Сохранить и перезагрузить».")
+func _model_row(m: Dictionary, current: String) -> PanelContainer:
+	var p := Kit.panel("InsetPanel")
+	var row := Kit.hbox(8)
+	p.add_child(row)
+	var text := Kit.vbox(2)
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name := Kit.label(str(m.get("name", "")), 15, Palette.TEXT)
+	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name.clip_text = true
+	text.add_child(name)
+	var size := float(int(m.get("size", 0))) / 1073741824.0
+	var flags: PackedStringArray = ["%.1f ГБ" % size]
+	if bool(m.get("builtin", false)):
+		flags.append("встроенная копия")
+	if str(m.get("path", "")) == current:
+		flags.append("выбрана")
+	if AIConnector.is_ready() and not AIConnector.is_openrouter() and str(m.get("path", "")) == current:
+		flags.append("загружена")
+	text.add_child(Kit.small(" · ".join(flags), Palette.MUTED))
+	row.add_child(text)
+	var load := Kit.button("Загрузить", "GhostButton")
+	load.custom_minimum_size = Vector2(120, 44)
+	load.pressed.connect(_load_model_path.bind(str(m.get("path", ""))))
+	row.add_child(load)
+	if not bool(m.get("builtin", false)):
+		var del := Kit.button("×", "GhostButton")
+		del.custom_minimum_size = Vector2(44, 44)
+		del.tooltip_text = "Удалить модель"
+		del.pressed.connect(_ask_delete_model.bind(str(m.get("path", "")), str(m.get("name", ""))))
+		row.add_child(del)
+	return p
 
-func _load_model() -> void:
-	_save(false)
+func _load_model_path(path: String) -> void:
 	if AIConnector.busy:
 		toast("Сначала дождитесь конца генерации", true)
 		return
+	_save(false)
+	SettingsManager.set_value("ai_provider", "local")
+	SettingsManager.set_value("model_path", path)
+	_provider_option.select(0)
+	AIConnector.unload()
 	AIConnector.initialize()
+	_refresh_models()
+	toast("Загружаю: " + path.get_file())
+
+func _ask_delete_model(path: String, name: String) -> void:
+	_pending_delete_path = path
+	_delete_confirm.dialog_text = "«%s» будет удалена из user://models. Это действие необратимо." % name
+	_delete_confirm.popup_centered(Vector2i(520, 220))
+
+func _confirm_delete_model() -> void:
+	if _pending_delete_path == "":
+		return
+	if AIConnector.busy:
+		toast("Сначала дождитесь конца генерации", true)
+		return
+	var was_loaded := AIConnector.model_path != "" and AIConnector.model_path == ProjectSettings.globalize_path(_pending_delete_path)
+	if ModelManager.delete_model(_pending_delete_path):
+		if was_loaded:
+			AIConnector.unload()
+		toast("Модель удалена")
+		_refresh_models()
+	else:
+		toast(ModelManager.last_error, true)
+	_pending_delete_path = ""
+
+func _on_model_selected(idx: int) -> void:
+	var path := str(_or_model.get_item_metadata(idx)) if idx >= 0 else ""
+	if path != "":
+		_or_manual.text = path
+		SettingsManager.set_value("openrouter_model", path)
+
+func _on_provider_selected(idx: int) -> void:
+	SettingsManager.set_value("ai_provider", "openrouter" if idx == 1 else "local")
+	_or_status.text = "Провайдер: OpenRouter" if idx == 1 else "Провайдер: локальная модель"
+	if idx == 1 and OpenRouterClient.api_key() != "":
+		OpenRouterClient.fetch_models()
+
+func _test_openrouter() -> void:
+	SettingsManager.set_value("openrouter_api_key", _or_key.text.strip_edges())
+	if _or_key.text.strip_edges() == "":
+		_or_status.text = "Сначала введите API-ключ"
+		_or_status.add_theme_color_override("font_color", Palette.DANGER)
+		return
+	_or_status.text = "Запрашиваю список бесплатных моделей…"
+	_or_status.add_theme_color_override("font_color", Palette.WARN)
+	OpenRouterClient.fetch_models()
+
+func _on_or_models_loaded(models: Array) -> void:
+	_or_model.clear()
+	var current := str(SettingsManager.get_value("openrouter_model", ""))
+	for i in range(models.size()):
+		var m: Dictionary = models[i]
+		_or_model.add_item("%s (%dK)" % [str(m.get("name", m.get("id", ""))), int(m.get("context", 0)) / 1000], i)
+		_or_model.set_item_metadata(i, str(m.get("id", "")))
+		if str(m.get("id", "")) == current:
+			_or_model.select(i)
+	_or_status.text = "Бесплатных текстовых моделей: %d. Список может меняться." % models.size()
+	_or_status.add_theme_color_override("font_color", Palette.OK)
+
+func _on_or_models_failed(message: String) -> void:
+	_or_status.text = message + " Можно ввести id модели вручную."
+	_or_status.add_theme_color_override("font_color", Palette.DANGER)
 
 func _save_and_reload() -> void:
 	_save(false)
@@ -228,9 +388,21 @@ func _save(show_toast: bool = true) -> void:
 			values[key] = v if is_float else int(roundf(v))
 		elif c is CheckBox:
 			values[key] = c.button_pressed
+		elif c is OptionButton:
+			var idx := (c as OptionButton).selected
+			if key == "kv_type":
+				values[key] = ["f16", "q8_0", "q4_0"][idx]
+	values["ai_provider"] = "openrouter" if _provider_option.selected == 1 else "local"
+	values["openrouter_api_key"] = _or_key.text.strip_edges()
+	var manual := _or_manual.text.strip_edges()
+	if manual != "":
+		values["openrouter_model"] = manual
+	elif _or_model.item_count > 0 and _or_model.selected >= 0:
+		values["openrouter_model"] = str(_or_model.get_item_metadata(_or_model.selected))
 	SettingsManager.set_many(values)
 	if show_toast:
 		toast("Настройки сохранены")
+	_refresh_models()
 
 func _on_light_toggled(on: bool) -> void:
 	if not on:
@@ -248,9 +420,14 @@ func _on_ai_status(text: String) -> void:
 		color = Palette.DANGER
 	_model_status.add_theme_color_override("font_color", color)
 
+func _on_load_progress(percent: int) -> void:
+	_model_status.text = "Загрузка модели: %d%%" % percent
+	_model_status.add_theme_color_override("font_color", Palette.WARN)
+
 func _on_model_loaded(path: String) -> void:
 	_model_status.text = "Загружена: " + path.get_file()
 	_model_status.add_theme_color_override("font_color", Palette.OK)
+	_refresh_models()
 
 func _on_model_failed(message: String) -> void:
 	_model_status.text = message
@@ -348,22 +525,36 @@ func _process(_delta: float) -> void:
 			toast(_import_error, true)
 		else:
 			SettingsManager.set_value("model_path", _import_dst)
+			SettingsManager.set_value("ai_provider", "local")
+			_provider_option.select(0)
 			_import_label.text = "Импортировано: " + _import_dst.get_file()
-			toast("Модель импортирована. Нажмите «Сохранить и перезагрузить».")
+			toast("Модель импортирована. Нажмите «Загрузить» у неё в списке.")
 			_refresh_models()
-			_model_name.text = "Своя модель: " + _import_dst.get_file()
 
 func _refresh_ram() -> void:
 	if _ram_bar == null:
 		return
+	var ram := RamMonitor.get_ram()
+	if not bool(ram.get("valid", false)):
+		_ram_bar.value = 0
+		_ram_label.text = "RAM: —"
+		_ram_hint.text = "Нет данных /proc/meminfo."
+		return
 	var path := str(SettingsManager.get_value("model_path", ""))
-	var probe := path if path != "" else "embedded_qwen2.5-3b"
 	var n_ctx := int(SettingsManager.get_value("n_ctx", 4096))
-	var footprint := RamMonitor.estimate_footprint_mb(probe, n_ctx)
-	_ram_bar.max_value = maxf(1.0, float(RamMonitor.total_mb))
-	_ram_bar.value = float(RamMonitor.total_used_mb())
-	_ram_label.text = "Занято %s из %s · свободно %s" % [RamMonitor.format_gb(RamMonitor.total_used_mb()), RamMonitor.format_gb(RamMonitor.total_mb), RamMonitor.format_gb(RamMonitor.available_mb)]
-	_ram_hint.text = "Модель + контекст: около %s. %s" % [RamMonitor.format_mb(footprint), RamMonitor.suggestion(probe, n_ctx)]
+	var footprint := RamMonitor.estimate_footprint_mb(path, n_ctx)
+	_ram_bar.max_value = maxf(1.0, float(ram.get("total_mb", 1)))
+	_ram_bar.value = float(ram.get("used_mb", 0))
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = RamMonitor.color_for_free()
+	fill.set_corner_radius_all(6)
+	_ram_bar.add_theme_stylebox_override("fill", fill)
+	_ram_label.text = "Занято %s из %s · свободно %s" % [
+		RamMonitor.format_gb(int(ram.get("used_mb", 0))),
+		RamMonitor.format_gb(int(ram.get("total_mb", 0))),
+		RamMonitor.format_gb(int(ram.get("available_mb", 0))),
+	]
+	_ram_hint.text = "Модель + контекст: около %s. %s" % [RamMonitor.format_mb(footprint), RamMonitor.suggestion(path, n_ctx)]
 	_ram_hint.add_theme_color_override("font_color", Palette.DANGER if RamMonitor.is_risky(footprint) else Palette.MUTED)
 
 func _unhandled_input(event: InputEvent) -> void:

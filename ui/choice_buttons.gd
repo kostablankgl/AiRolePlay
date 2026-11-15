@@ -9,9 +9,15 @@ var _buttons: Array[Button] = []
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 8)
+	size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 func set_choices(choices: Array) -> void:
 	clear()
+	var usable: Array = []
+	for c_v in choices:
+		if c_v is Dictionary and str(c_v.get("title", "")).strip_edges() != "":
+			usable.append(c_v)
+	var stretch := usable.size() <= 2
 	var index := 1
 	for c_v in choices:
 		if not (c_v is Dictionary):
@@ -26,6 +32,7 @@ func set_choices(choices: Array) -> void:
 			desc = ""
 		var b := Kit.choice_button(heading, desc)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.size_flags_vertical = Control.SIZE_EXPAND_FILL if stretch else Control.SIZE_SHRINK_BEGIN
 		b.pressed.connect(_on_pressed.bind(c))
 		add_child(b)
 		_buttons.append(b)
@@ -48,5 +55,6 @@ func set_enabled(enabled: bool) -> void:
 func set_loading(text: String = "Мастер пишет…") -> void:
 	clear()
 	var p := Kit.panel("InsetPanel")
+	p.custom_minimum_size = Vector2(0, 78)
 	p.add_child(Kit.label(text, 18, Palette.MUTED, true))
 	add_child(p)

@@ -63,6 +63,8 @@ func start_new(w: Dictionary, template: Dictionary, char: Dictionary, opts: Dict
 	world = w
 	world_id = str(w.get("id", ""))
 	character = char.duplicate(true)
+	if str(character.get("home", "")).strip_edges() == "":
+		character["home"] = str(opts.get("home", template.get("home", w.get("default_home", ""))))
 	finances = _default_finances()
 	var tfin: Dictionary = template.get("finances", {})
 	for k in ["cash_minor", "bank_minor", "trust_minor"]:
@@ -76,7 +78,7 @@ func start_new(w: Dictionary, template: Dictionary, char: Dictionary, opts: Dict
 			if of.has(k):
 				finances[k] = int(of[k])
 	inventory = template.get("inventory", []).duplicate(true)
-	relationships = template.get("relationships", {}).duplicate(true)
+	relationships = _normalize_relationships(template.get("relationships", {}))
 	flags = template.get("flags", []).duplicate(true)
 	var loc := str(opts.get("location", template.get("start_location", "")))
 	if loc == "" and not WorldDB.get_locations(w).is_empty():
@@ -108,6 +110,8 @@ func load_from_dict(data: Dictionary, w: Dictionary) -> void:
 	world = w
 	world_id = str(data.get("world_id", w.get("id", "")))
 	character = data.get("character", {}).duplicate(true)
+	if str(character.get("home", "")).strip_edges() == "":
+		character["home"] = str(w.get("default_home", ""))
 	var t: Variant = data.get("time", {})
 	if t is Dictionary:
 		var td: Dictionary = t
@@ -133,7 +137,7 @@ func load_from_dict(data: Dictionary, w: Dictionary) -> void:
 		finances["property"] = fin.get("property", [])
 	inventory = data.get("inventory", []).duplicate(true)
 	inventory_slots = clampi(int(data.get("inventory_slots", 8)), 1, 24)
-	relationships = data.get("relationships", {}).duplicate(true)
+	relationships = _normalize_relationships(data.get("relationships", {}))
 	flags = data.get("flags", []).duplicate(true)
 	history = data.get("history", []).duplicate(true)
 	summary = str(data.get("summary", ""))
@@ -319,7 +323,7 @@ func money_brief() -> String:
 	return format_money(cash())
 
 func add_item(id: String, qty: int = 1, emoji: String = "", item_name: String = "") -> bool:
-	if qty <= 0:
+	if qty <= 0 or id == "wallet":
 		return false
 	for item_v in inventory:
 		var item: Dictionary = item_v
@@ -327,7 +331,7 @@ func add_item(id: String, qty: int = 1, emoji: String = "", item_name: String = 
 			item["qty"] = int(item.get("qty", 0)) + qty
 			state_changed.emit()
 			return true
-	if inventory.size() >= inventory_slots:
+	if used_slots() >= inventory_slots:
 		return false
 	var cat := WorldDB.get_item(world, id)
 	if emoji == "":
@@ -339,6 +343,8 @@ func add_item(id: String, qty: int = 1, emoji: String = "", item_name: String = 
 	return true
 
 func remove_item(id: String, qty: int = 1) -> bool:
+	if id == "wallet":
+		return false
 	for i in range(inventory.size()):
 		var item: Dictionary = inventory[i]
 		if str(item.get("id", "")) == id:
@@ -365,6 +371,34 @@ func item_emoji(item: Dictionary) -> String:
 	var cat := WorldDB.get_item(world, str(item.get("id", "")))
 	return str(cat.get("emoji", "•"))
 
+func used_slots() -> int:
+	return mini(inventory.size() + 1, inventory_slots)
+
+func wallet_item() -> Dictionary:
+	var labels: Dictionary = world.get("finance_labels", {})
+	return {
+		"id": "wallet",
+		"emoji": "💰",
+		"name": str(labels.get("cash", "Наличные")),
+		"qty": 1,
+		"is_cash": true,
+	}
+
+func inventory_display() -> Array:
+	var out: Array = [wallet_item()]
+	out.append_array(inventory)
+	return out
+
+func item_description(item: Dictionary) -> String:
+	if bool(item.get("is_cash", false)) or str(item.get("id", "")) == "wallet":
+		return "Наличные на руках. Банк, резерв и доходы — во вкладке «Герой»."
+	var cat := WorldDB.get_item(world, str(item.get("id", "")))
+	var desc := str(cat.get("desc", ""))
+	return desc if desc != "" else "Предмет из этого мира."
+
+func home() -> String:
+	return str(character.get("home", "")).strip_edges()
+
 func set_flag(flag: String) -> bool:
 	var f := sanitize_flag(flag)
 	if f == "" or flags.has(f):
@@ -389,27 +423,54 @@ func sanitize_flag(flag: String) -> String:
 		f = f.substr(0, 48)
 	return f
 
+func _normalize_relationships(raw: Variant) -> Dictionary:
+	var out: Dictionary = {}
+	if raw is Array:
+		for entry_v in raw:
+			if entry_v is Dictionary:
+				var e: Dictionary = entry_v
+				var eid := str(e.get("id", "")).strip_edges()
+				if eid != "":
+					out[eid] = e.duplicate(true)
+	elif raw is Dictionary:
+		out = raw.duplicate(true)
+	for id in out.keys():
+		var c := WorldDB.get_character(world, str(id))
+		var e: Dictionary = out[id] if out[id] is Dictionary else { "level": int(out[id]) }
+		e["level"] = clampi(int(e.get("level", 0)), 0, 5)
+		if str(e.get("type", "")).strip_edges() == "":
+			e["type"] = str(c.get("type", c.get("role", "знакомый")))
+		if str(e.get("group", "")).strip_edges() == "":
+			e["group"] = str(c.get("group", "other"))
+		if str(e.get("emoji", "")).strip_edges() == "":
+			e["emoji"] = str(c.get("emoji", "•"))
+		if str(e.get("note", "")).strip_edges() == "":
+			e["note"] = str(e.get("secret", c.get("note", "")))
+		out[id] = e
+	return out
+
 func rel_level(id: String) -> int:
 	if not relationships.has(id):
 		return 0
 	var value: Variant = relationships[id]
 	if value is Dictionary:
-		return int(value.get("level", 0))
+		return clampi(int(value.get("level", 0)), 0, 5)
 	if value is int or value is float:
-		return int(value)
+		return clampi(int(value), 0, 5)
 	return 0
 
 func change_rel(id: String, delta: int) -> bool:
 	if WorldDB.get_character(world, id).is_empty():
 		return false
-	var entry: Dictionary = { "level": 0, "secret": "" }
+	var entry: Dictionary = { "level": 0 }
 	var old: Variant = relationships.get(id, null)
 	if old is Dictionary:
 		entry = old
 	elif old is int or old is float:
 		entry["level"] = int(old)
-	entry["level"] = clampi(int(entry.get("level", 0)) + delta, -10, 10)
+	entry["level"] = clampi(int(entry.get("level", 0)) + delta, 0, 5)
 	relationships[id] = entry
+	relationships = _normalize_relationships(relationships)
 	state_changed.emit()
 	return true
 
@@ -420,37 +481,82 @@ func relationship_rows() -> Array:
 		var value: Variant = relationships[id]
 		var level := 0
 		var secret := ""
+		var note := ""
+		var type := ""
+		var group := "other"
+		var emoji := "•"
 		if value is Dictionary:
 			level = int(value.get("level", 0))
 			secret = str(value.get("secret", ""))
+			note = str(value.get("note", secret))
+			type = str(value.get("type", ""))
+			group = str(value.get("group", "other"))
+			emoji = str(value.get("emoji", "•"))
 		elif value is int or value is float:
 			level = int(value)
 		rows.append({
 			"id": str(id),
 			"name": str(c.get("name", id)),
 			"role": str(c.get("role", "")),
-			"level": level,
+			"type": type if type != "" else str(c.get("type", c.get("role", "знакомый"))),
+			"group": group if group != "" else str(c.get("group", "other")),
+			"group_name": relationship_group_name(group if group != "" else str(c.get("group", "other"))),
+			"emoji": emoji if emoji != "" else str(c.get("emoji", "•")),
+			"level": clampi(level, 0, 5),
+			"note": note,
 			"secret": secret,
 		})
-	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["level"]) > int(b["level"]))
+	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var ga := relationship_group_order(str(a.get("group", "")))
+		var gb := relationship_group_order(str(b.get("group", "")))
+		if ga != gb:
+			return ga < gb
+		if int(a["level"]) != int(b["level"]):
+			return int(a["level"]) > int(b["level"])
+		return str(a["name"]) < str(b["name"])
+	)
 	return rows
 
+func relationship_groups() -> Array:
+	var raw: Array = world.get("relationship_groups", [])
+	if raw is Array and not raw.is_empty():
+		return raw
+	return [
+		{ "id": "family", "name": "Семья" },
+		{ "id": "staff", "name": "Дом и служба" },
+		{ "id": "street", "name": "Улица" },
+		{ "id": "corporate", "name": "Корпорации" },
+		{ "id": "other", "name": "Знакомые" },
+	]
+
+func relationship_group_order(group_id: String) -> int:
+	var groups := relationship_groups()
+	for i in range(groups.size()):
+		if str(groups[i].get("id", "")) == group_id:
+			return i
+	return groups.size()
+
+func relationship_group_name(group_id: String) -> String:
+	for g in relationship_groups():
+		if str(g.get("id", "")) == group_id:
+			return str(g.get("name", group_id))
+	return "Знакомые"
+
 func rel_label(level: int) -> String:
-	if level <= -6:
-		return "вражда"
-	if level <= -3:
-		return "неприязнь"
-	if level <= -1:
-		return "холодность"
-	if level == 0:
-		return "нейтрально"
-	if level <= 2:
-		return "знакомство"
-	if level <= 4:
-		return "симпатия"
-	if level <= 6:
-		return "дружба"
-	return "близость"
+	match clampi(level, 0, 5):
+		0:
+			return "нейтрально"
+		1:
+			return "знакомство"
+		2:
+			return "симпатия"
+		3:
+			return "дружба"
+		4:
+			return "близость"
+		5:
+			return "доверие"
+	return "нейтрально"
 
 func prompt_state() -> Dictionary:
 	var loc := WorldDB.get_location(world, location)
@@ -461,6 +567,7 @@ func prompt_state() -> Dictionary:
 			"age": int(character.get("age", 0)),
 			"title": str(character.get("title", "")),
 			"is_heir": bool(character.get("is_heir", false)),
+			"home": home(),
 			"clothes": str(character.get("clothes", "")),
 			"skills": character.get("skills", []),
 			"abilities": character.get("abilities", []),
@@ -510,6 +617,9 @@ func apply_delta(delta: Variant) -> Dictionary:
 			var iid := str(add.get("id", "")).strip_edges()
 			if iid == "":
 				report["rejected"].append("предмет без id")
+				continue
+			if iid == "wallet":
+				report["rejected"].append("wallet управляется через cash_minor")
 				continue
 			var qty := int(_as_int(add.get("qty", 1)))
 			if qty <= 0:
@@ -619,9 +729,30 @@ func apply_delta(delta: Variant) -> Dictionary:
 			report["applied"]["timeline"] = ev
 	if not report["rejected"].is_empty():
 		report["ok"] = false
+		_log_rejected(report)
 	last_report = report
 	state_changed.emit()
 	return report
+
+func _log_rejected(report: Dictionary) -> void:
+	var rejected: Array = report.get("rejected", [])
+	if rejected.is_empty():
+		return
+	DirAccess.make_dir_recursive_absolute("user://logs")
+	var path := "user://logs/delta.log"
+	var old := ""
+	if FileAccess.file_exists(path):
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f != null:
+			old = f.get_as_text()
+			f.close()
+		if old.length() > 48000:
+			old = old.substr(old.length() - 32000)
+	var line := "%s | turn %d | %s\n" % [Time.get_datetime_string_from_system(), turn_number(), ", ".join(rejected)]
+	var out := FileAccess.open(path, FileAccess.WRITE)
+	if out != null:
+		out.store_string(old + line)
+		out.close()
 
 func _as_int(v: Variant) -> Variant:
 	match typeof(v):

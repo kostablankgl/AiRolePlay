@@ -7,6 +7,7 @@ var available_mb: int = 0
 var swap_total_mb: int = 0
 var swap_free_mb: int = 0
 var pressure: float = 0.0
+var valid: bool = false
 var _timer: Timer
 var _size_cache: Dictionary = {}
 
@@ -21,16 +22,33 @@ func _ready() -> void:
 func refresh() -> void:
 	var info := _read_meminfo()
 	if info.is_empty():
+		valid = false
+		total_mb = 0
+		available_mb = 0
+		pressure = 0.0
+		updated.emit()
 		return
-	total_mb = int(info.get("MemTotal", 0)) / 1024
-	available_mb = int(info.get("MemAvailable", 0)) / 1024
+	total_mb = int(round(float(info.get("MemTotal", 0)) / 1024.0))
+	available_mb = int(round(float(info.get("MemAvailable", 0)) / 1024.0))
 	if available_mb <= 0:
-		available_mb = (int(info.get("MemFree", 0)) + int(info.get("Buffers", 0)) + int(info.get("Cached", 0))) / 1024
-	swap_total_mb = int(info.get("SwapTotal", 0)) / 1024
-	swap_free_mb = int(info.get("SwapFree", 0)) / 1024
+		available_mb = int(round(float(int(info.get("MemFree", 0)) + int(info.get("Buffers", 0)) + int(info.get("Cached", 0))) / 1024.0))
+	swap_total_mb = int(round(float(info.get("SwapTotal", 0)) / 1024.0))
+	swap_free_mb = int(round(float(info.get("SwapFree", 0)) / 1024.0))
+	valid = total_mb > 0 and available_mb > 0
 	if total_mb > 0:
 		pressure = clampf(float(total_mb - available_mb) / float(total_mb), 0.0, 1.0)
 	updated.emit()
+
+func get_ram() -> Dictionary:
+	return {
+		"valid": valid,
+		"total_mb": total_mb,
+		"available_mb": available_mb,
+		"used_mb": total_used_mb(),
+		"swap_total_mb": swap_total_mb,
+		"swap_free_mb": swap_free_mb,
+		"pressure": pressure,
+	}
 
 func _read_meminfo() -> Dictionary:
 	var out: Dictionary = {}
@@ -44,7 +62,7 @@ func _read_meminfo() -> Dictionary:
 		if pos <= 0:
 			continue
 		var key := line.substr(0, pos).strip_edges()
-		var rest := line.substr(pos + 1).strip_edges().split(" ")
+		var rest := line.substr(pos + 1).strip_edges().split(" ", false)
 		if rest.size() > 0 and rest[0].is_valid_int():
 			out[key] = int(rest[0])
 	return out
@@ -84,9 +102,11 @@ func estimate_footprint_mb(model_path: String, n_ctx: int) -> int:
 	return size + kv + 340
 
 func total_used_mb() -> int:
-	return total_mb - available_mb
+	return maxi(0, total_mb - available_mb)
 
 func format_gb(mb: int) -> String:
+	if not valid:
+		return "—"
 	return "%.1f ГБ" % (float(mb) / 1024.0)
 
 func format_mb(mb: int) -> String:
@@ -94,19 +114,30 @@ func format_mb(mb: int) -> String:
 		return format_gb(mb)
 	return "%d МБ" % mb
 
+func color_for_free() -> Color:
+	if not valid:
+		return Color("9aa3ad")
+	if available_mb < 1536:
+		return Color("c46a63")
+	if available_mb < 2560:
+		return Color("d8a657")
+	return Color("7fb385")
+
 func describe_pressure() -> String:
-	if pressure < 0.72:
-		return "Свободно"
-	if pressure < 0.86:
+	if not valid:
+		return "Нет данных"
+	if available_mb < 1536:
+		return "Мало памяти"
+	if available_mb < 2560:
 		return "Напряжение"
-	return "Мало памяти"
+	return "Свободно"
 
 func is_risky(footprint_mb: int) -> bool:
-	return available_mb > 0 and available_mb < footprint_mb + 180
+	return valid and available_mb < footprint_mb + 180
 
 func suggestion(model_path: String, n_ctx: int) -> String:
-	if total_mb <= 0:
-		return ""
+	if not valid:
+		return "Не удалось прочитать /proc/meminfo — данные о памяти недоступны."
 	var footprint := estimate_footprint_mb(model_path, n_ctx)
 	if is_risky(footprint):
 		return "Свободно %s, а модели нужно около %s. Включите лёгкий режим или уменьшите контекст до 2048–4096." % [format_gb(available_mb), format_mb(footprint)]

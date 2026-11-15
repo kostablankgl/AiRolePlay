@@ -43,6 +43,10 @@ static func _box(color: Color, radius: int = 10, border: int = 0, border_color: 
 static func _build() -> Theme:
 	var t: Theme = Theme.new()
 	t.default_font_size = 18
+	var regular: Font = load("res://assets/fonts/NotoSans-Regular.ttf")
+	if regular != null:
+		regular.fallbacks = [ThemeDB.fallback_font]
+		t.default_font = regular
 
 	t.set_color("font_color", "Label", TEXT)
 	t.set_color("default_color", "RichTextLabel", TEXT)
@@ -88,6 +92,18 @@ static func _build() -> Theme:
 	t.set_color("font_color", "ChoiceButton", TEXT)
 	t.set_color("font_hover_color", "ChoiceButton", Color("fff6df"))
 
+	t.set_type_variation("ItemSlot", "Button")
+	t.set_stylebox("normal", "ItemSlot", _box(PANEL_LIGHT, 10, 1, BORDER, 8))
+	t.set_stylebox("hover", "ItemSlot", _box(Color("313944"), 10, 1, GOLD_DARK, 8))
+	t.set_stylebox("pressed", "ItemSlot", _box(Color("3a3324"), 10, 1, GOLD, 8))
+	t.set_stylebox("disabled", "ItemSlot", _box(Color("20242b"), 10, 1, Color("2b313a"), 8))
+
+	t.set_type_variation("RowButton", "Button")
+	t.set_stylebox("normal", "RowButton", _box(PANEL, 10, 1, Color("2c333d"), 10))
+	t.set_stylebox("hover", "RowButton", _box(PANEL_LIGHT, 10, 1, GOLD_DARK, 10))
+	t.set_stylebox("pressed", "RowButton", _box(Color("3a3324"), 10, 1, GOLD, 10))
+	t.set_color("font_color", "RowButton", TEXT)
+
 	t.set_type_variation("DangerButton", "Button")
 	t.set_stylebox("normal", "DangerButton", _box(Color("3a2222"), 10, 1, Color("6d3a37"), 12))
 	t.set_stylebox("hover", "DangerButton", _box(Color("4a2826"), 10, 1, DANGER, 12))
@@ -130,6 +146,14 @@ static func _build() -> Theme:
 	t.set_color("font_unselected_color", "TabContainer", MUTED)
 	t.set_color("font_hovered_color", "TabContainer", TEXT)
 	t.set_font_size("font_size", "TabContainer", 17)
+
+	t.set_stylebox("tab_selected", "TabBar", _box(GOLD, 8, 0, GOLD, 8))
+	t.set_stylebox("tab_unselected", "TabBar", _box(Color("242931"), 8, 0, BORDER, 8))
+	t.set_stylebox("tab_hovered", "TabBar", _box(Color("2d3440"), 8, 0, GOLD_DARK, 8))
+	t.set_color("font_selected_color", "TabBar", Color("1a1710"))
+	t.set_color("font_unselected_color", "TabBar", MUTED)
+	t.set_color("font_hovered_color", "TabBar", TEXT)
+	t.set_font_size("font_size", "TabBar", 17)
 
 	t.set_stylebox("background", "ProgressBar", _box(Color("2a3038"), 6, 0, BORDER, 3))
 	t.set_stylebox("fill", "ProgressBar", _box(GOLD, 6, 0, GOLD, 3))

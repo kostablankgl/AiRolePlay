@@ -8,11 +8,12 @@ signal continuation_requested
 var _edit: LineEdit
 var _send: Button
 var _continue: Button
+const DEFAULT_PLACEHOLDER := "Свой ход, реплика или мысль…"
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 8)
 	_edit = LineEdit.new()
-	_edit.placeholder_text = "Свой ход, реплика или мысль…"
+	_edit.placeholder_text = DEFAULT_PLACEHOLDER
 	_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_edit.custom_minimum_size.y = 52
 	_edit.text_submitted.connect(_on_submit)
@@ -43,7 +44,28 @@ func set_enabled(enabled: bool) -> void:
 	_continue.disabled = not enabled
 
 func set_busy(busy: bool) -> void:
-	set_enabled(not busy)
+	if busy:
+		set_state("busy")
+	else:
+		set_state("ready")
+
+func set_state(state: String, detail: String = "") -> void:
+	match state:
+		"ready":
+			set_enabled(true)
+			_edit.placeholder_text = DEFAULT_PLACEHOLDER
+		"loading":
+			set_enabled(false)
+			_edit.placeholder_text = detail if detail != "" else "Загрузка модели…"
+		"generating":
+			set_enabled(false)
+			_edit.placeholder_text = detail if detail != "" else "Мастер пишет…"
+		"error":
+			set_enabled(false)
+			_edit.placeholder_text = detail if detail != "" else "Модель недоступна — откройте настройки"
+		_:
+			set_enabled(false)
+			_edit.placeholder_text = detail if detail != "" else DEFAULT_PLACEHOLDER
 
 func clear() -> void:
 	_edit.clear()

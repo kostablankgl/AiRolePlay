@@ -25,6 +25,12 @@ const DEFAULTS := {
 	"light_mode": false,
 	"auto_unload_pause": false,
 	"show_ram": true,
+	"ai_provider": "local",
+	"openrouter_api_key": "",
+	"openrouter_model": "",
+	"flash_attn": false,
+	"kv_type": "q8_0",
+	"use_repack": false,
 }
 
 var data: Dictionary = {}
@@ -59,6 +65,12 @@ func _sanitize() -> void:
 	data["penalty_last_n"] = clampi(int(data.get("penalty_last_n", 128)), -1, 1024)
 	data["max_tokens"] = clampi(int(data.get("max_tokens", 380)), 64, 1024)
 	data["seed"] = int(data.get("seed", -1))
+	data["ai_provider"] = str(data.get("ai_provider", "local"))
+	if data["ai_provider"] not in ["local", "openrouter"]:
+		data["ai_provider"] = "local"
+	data["kv_type"] = str(data.get("kv_type", "q8_0"))
+	if data["kv_type"] not in ["f16", "q8_0", "q4_0"]:
+		data["kv_type"] = "q8_0"
 
 func save_settings() -> void:
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
@@ -111,6 +123,9 @@ func context_params() -> Dictionary:
 		"n_batch": int(data["n_batch"]),
 		"threads": int(data["threads"]),
 		"threads_batch": int(data["threads"]),
+		"flash_attn": bool(data["flash_attn"]),
+		"type_k": str(data["kv_type"]),
+		"type_v": str(data["kv_type"]),
 	}
 
 func model_params() -> Dictionary:
@@ -118,4 +133,5 @@ func model_params() -> Dictionary:
 		"n_gpu_layers": 0,
 		"use_mmap": bool(data["use_mmap"]),
 		"use_mlock": bool(data["use_mlock"]),
+		"use_repack": bool(data["use_repack"]),
 	}

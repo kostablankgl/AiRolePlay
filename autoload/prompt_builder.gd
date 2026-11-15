@@ -59,12 +59,21 @@ func _assemble(action: String, is_intro: bool, hint: String, continuation: bool 
 		parts.append(sb)
 	parts.append(user_text)
 	var text := "\n".join(parts)
+	var system_parts: PackedStringArray = []
+	for i in range(maxi(0, parts.size() - 1)):
+		system_parts.append(parts[i])
+	var system_content := "\n".join(system_parts).replace("<|im_start|>system", "").replace("<|im_start|>user", "").replace("<|im_start|>assistant", "").replace("<|im_end|>", "").strip_edges()
+	var user_content := user_text.replace("<|im_end|>", "").replace("<|im_start|>user", "").replace("<|im_start|>assistant", "").strip_edges()
 	return {
 		"text": text,
 		"chars": text.length(),
 		"estimated_tokens": int(float(text.length()) / 2.2),
 		"lore_chunks": chunks.size(),
 		"stop_sequences": STOP_SEQUENCES.duplicate(),
+		"messages": [
+			{ "role": "system", "content": system_content },
+			{ "role": "user", "content": user_content },
+		],
 	}
 
 func _user_block(action: String, is_intro: bool, hint: String, continuation: bool, compact: bool = false) -> String:
@@ -151,6 +160,7 @@ func _output_format(w: Dictionary, compact: bool = false) -> String:
 	else:
 		lines.append("Формат: {\"time_advance\":{\"minutes\":15},\"rel\":{\"id_персонажа\":1},\"add_flags\":[\"flag\"],\"inventory_add\":[{\"id\":\"id_предмета\",\"qty\":1}],\"inventory_remove\":[{\"id\":\"id_предмета\",\"qty\":1}],\"cash_minor\":-20,\"timeline_event\":\"краткий факт\"}")
 		lines.append("Валютный минимум: " + minor_name + ". Меняй cash_minor в этих единицах, например -20 значит минус 20 " + minor_name + ".")
+		lines.append("В rel указывай только небольшое изменение уровня от -1 до +1; итоговый уровень отношений всегда 0–5.")
 	lines.append("Если изменений нет, верни <delta>{}</delta>. Не добавляй других ключей.")
 	return "\n".join(lines)
 
