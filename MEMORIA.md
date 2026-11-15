@@ -1,0 +1,10 @@
+- 2026-11-14: La ruta de build/firmar/mostrar cambia cada turno; usar la que indique Hefesto y máximo 2 builds por turno.
+- 2026-11-14: El modelo Qwen 2.5 3B Q4_K_M vive en `models/` con `.gdignore`; se excluye del export y se inyecta después en `assets/models/` con `tools/embed_model.py` (ZIP_STORED). Las libs arm64 se inyectan en `lib/arm64-v8a/`.
+- 2026-11-14: llama.cpp Android se compila en GitHub `kostablankgl/godot_llama` (workflow build-artifacts) con `GGML_OPENMP=OFF` para no depender de `libomp.so`; `parse_special=true` en `src/llama_model.cpp`. Artefacto: godot-llama-android-arm64.
+- 2026-11-14: Los packs necesitan `lore_files` en `world.json`; WorldDB copia lore a `user://worlds` y actualiza el JSON si sube `version`.
+- 2026-11-14: `export_presets.cfg` con `include_filter="*.md"`, `exclude_filter="models/*"`, paquete `com.hefesto.airoleplay`; el build de Hefesto puede restaurarlo desde `.papelera/`.
+- 2026-11-15: APK con modelo >2 GB: `tools/embed_model.py` fija `zipfile.ZIP64_LIMIT=0xFFFFFFFF`; si no, `firmar`/apksig fallan con «Malformed ZIP entry».
+- 2026-11-15: El firmador de Hefesto falló con el APK de 2.1 GB; firma alternativa con `apksig` (Google Maven 8.7.3), keystore `/root/debug.keystore`, alias `androiddebug`, pass `android`; verifica v2/v3. `pm install` está bloqueado por MIUI XSpace; instalar desde el botón de Hefesto.
+- 2026-11-15: `juego-full-signed.apk` (2.1 GB) contiene modelo, lore, libs sin OpenMP y paquete `com.hefesto.airoleplay`; SHA-256 `87bb5f25049484ac869482165a52aa708e48458524066ef78a0db6febbb74f6b`.
+- 2026-11-15: WorldDB descubre los mundos de `res://worlds` por carpeta (sin lista fija); la fecha por defecto sale de `default_start_date` o del primer `start_template` del mundo.
+- 2026-11-15: Los packs pueden definir `language_instruction` y `finance_labels`; las etiquetas de la cartera salen del mundo. Al subir `version`, WorldDB reescribe también el lore copiado.
