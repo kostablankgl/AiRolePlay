@@ -9,6 +9,7 @@ var _buttons: Array[Button] = []
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 8)
+	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 func set_choices(choices: Array) -> void:
@@ -17,7 +18,6 @@ func set_choices(choices: Array) -> void:
 	for c_v in choices:
 		if c_v is Dictionary and str(c_v.get("title", "")).strip_edges() != "":
 			usable.append(c_v)
-	var stretch := usable.size() <= 2
 	var index := 1
 	for c_v in choices:
 		if not (c_v is Dictionary):
@@ -32,7 +32,7 @@ func set_choices(choices: Array) -> void:
 			desc = ""
 		var b := Kit.choice_button(heading, desc)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.size_flags_vertical = Control.SIZE_EXPAND_FILL if stretch else Control.SIZE_SHRINK_BEGIN
+		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		b.pressed.connect(_on_pressed.bind(c))
 		add_child(b)
 		_buttons.append(b)

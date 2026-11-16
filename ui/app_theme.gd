@@ -17,6 +17,18 @@ const BLUE := Color("7aa2c9")
 
 static var _theme: Theme
 
+static func apply_typography(t: Theme, ui_size: int = 15, line_spacing: int = 4) -> void:
+	t.default_font_size = clampi(ui_size, 12, 20)
+	t.set_constant("line_separation", "RichTextLabel", clampi(line_spacing, 0, 10))
+	t.set_constant("line_spacing", "Label", clampi(line_spacing, 0, 10))
+	var track := _box(Color(0, 0, 0, 0), 9, 0, BORDER, 0)
+	t.set_stylebox("scroll", "VScrollBar", track)
+	var grabber := _box(Color("59616c"), 9, 0, Color("59616c"), 0)
+	t.set_stylebox("grabber", "VScrollBar", grabber)
+	t.set_stylebox("grabber_highlight", "VScrollBar", _box(GOLD_DARK, 9, 0, GOLD_DARK, 0))
+	t.set_stylebox("grabber_pressed", "VScrollBar", _box(GOLD, 9, 0, GOLD, 0))
+	t.set_constant("minimum_grabber_size", "VScrollBar", 60)
+
 static func get_theme() -> Theme:
 	if _theme == null:
 		_theme = _build()
@@ -53,7 +65,7 @@ static func _build() -> Theme:
 	t.set_constant("line_separation", "RichTextLabel", 6)
 	t.set_stylebox("normal", "RichTextLabel", _box(Color(0, 0, 0, 0), 8, 0, BORDER, 2))
 
-	t.set_stylebox("panel", "PanelContainer", _box(PANEL, 14, 1, BORDER, 16))
+	t.set_stylebox("panel", "PanelContainer", _box(PANEL, 14, 1, BORDER, 12))
 
 	t.set_stylebox("normal", "Button", _box(PANEL_LIGHT, 10, 1, BORDER, 12))
 	t.set_stylebox("hover", "Button", _box(Color("2d3440"), 10, 1, GOLD_DARK, 12))
@@ -111,11 +123,11 @@ static func _build() -> Theme:
 	t.set_color("font_color", "DangerButton", Color("e9b7b3"))
 
 	t.set_type_variation("CardPanel", "PanelContainer")
-	t.set_stylebox("panel", "CardPanel", _box(PANEL, 14, 1, BORDER, 16))
+	t.set_stylebox("panel", "CardPanel", _box(PANEL, 14, 1, BORDER, 12))
 	t.set_type_variation("InsetPanel", "PanelContainer")
-	t.set_stylebox("panel", "InsetPanel", _box(BG_SOFT, 12, 1, Color("2c333d"), 14))
+	t.set_stylebox("panel", "InsetPanel", _box(BG_SOFT, 12, 1, Color("2c333d"), 12))
 	t.set_type_variation("TopBarPanel", "PanelContainer")
-	t.set_stylebox("panel", "TopBarPanel", _box(Color("191c22"), 12, 1, Color("2b313a"), 10))
+	t.set_stylebox("panel", "TopBarPanel", _box(Color("191c22"), 12, 1, Color("2b313a"), 12))
 
 	t.set_stylebox("normal", "LineEdit", _box(BG_SOFT, 10, 1, BORDER, 12))
 	t.set_stylebox("focus", "LineEdit", _box(BG_SOFT, 10, 2, GOLD_DARK, 12))

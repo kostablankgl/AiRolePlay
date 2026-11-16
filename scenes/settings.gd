@@ -24,6 +24,10 @@ var _import_progress: int = 0
 var _import_done: bool = false
 var _import_error: String = ""
 var _importing: bool = false
+var _scene_font_slider: HSlider
+var _ui_font_slider: HSlider
+var _line_slider: HSlider
+var _font_preview: RichTextLabel
 
 func _ready() -> void:
 	_build()
@@ -37,7 +41,7 @@ func _ready() -> void:
 	RamMonitor.updated.connect(_refresh_ram)
 	_refresh_models()
 	_refresh_ram()
-	_on_ai_status("Модель готова" if AIConnector.is_ready() else "Модель не загружена")
+	_refresh_model_status()
 
 func _build() -> void:
 	var outer := setup_page()
@@ -127,6 +131,47 @@ func _build() -> void:
 	_ram_hint = Kit.small("", Palette.MUTED)
 	rb.add_child(_ram_hint)
 	page.add_child(ram)
+
+	var design := Kit.panel("CardPanel")
+	var db := Kit.vbox(8)
+	design.add_child(db)
+	db.add_child(Kit.label("Оформление", 22, Palette.GOLD))
+	db.add_child(Kit.label("Размер текста сцены", 15, Palette.MUTED))
+	_scene_font_slider = HSlider.new()
+	_scene_font_slider.min_value = 14
+	_scene_font_slider.max_value = 30
+	_scene_font_slider.step = 1
+	_scene_font_slider.custom_minimum_size = Vector2(0, 40)
+	_scene_font_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scene_font_slider.value_changed.connect(func(_v: float) -> void: _apply_typography())
+	db.add_child(_scene_font_slider)
+	db.add_child(Kit.label("Размер интерфейса", 15, Palette.MUTED))
+	_ui_font_slider = HSlider.new()
+	_ui_font_slider.min_value = 12
+	_ui_font_slider.max_value = 20
+	_ui_font_slider.step = 1
+	_ui_font_slider.custom_minimum_size = Vector2(0, 40)
+	_ui_font_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_ui_font_slider.value_changed.connect(func(_v: float) -> void: _apply_typography())
+	db.add_child(_ui_font_slider)
+	db.add_child(Kit.label("Межстрочный интервал", 15, Palette.MUTED))
+	_line_slider = HSlider.new()
+	_line_slider.min_value = 0
+	_line_slider.max_value = 10
+	_line_slider.step = 1
+	_line_slider.custom_minimum_size = Vector2(0, 40)
+	_line_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_line_slider.value_changed.connect(func(_v: float) -> void: _apply_typography())
+	db.add_child(_line_slider)
+	var preview_panel := Kit.panel("InsetPanel")
+	_font_preview = RichTextLabel.new()
+	_font_preview.bbcode_enabled = false
+	_font_preview.fit_content = true
+	_font_preview.custom_minimum_size = Vector2(0, 92)
+	_font_preview.text = "Так будет выглядеть текст сцены.\nВторая строка для проверки интервала."
+	preview_panel.add_child(_font_preview)
+	db.add_child(preview_panel)
+	page.add_child(design)
 
 	var gen := Kit.panel("CardPanel")
 	var gb := Kit.vbox(8)
@@ -244,7 +289,42 @@ func _load_values() -> void:
 	_provider_option.select(1 if str(SettingsManager.get_value("ai_provider", "local")) == "openrouter" else 0)
 	_or_key.text = str(SettingsManager.get_value("openrouter_api_key", ""))
 	_or_manual.text = str(SettingsManager.get_value("openrouter_model", ""))
-	_model_name.text = "Локальная модель: " + ModelManager.model_name()
+	_scene_font_slider.value = int(SettingsManager.get_value("scene_font_size", 18))
+	_ui_font_slider.value = int(SettingsManager.get_value("ui_font_size", 15))
+	_line_slider.value = int(SettingsManager.get_value("line_spacing", 4))
+	_apply_typography(false)
+	_refresh_model_name()
+
+func _apply_typography(persist: bool = true) -> void:
+	if _scene_font_slider == null:
+		return
+	var scene_size := int(_scene_font_slider.value)
+	var ui_size := int(_ui_font_slider.value)
+	var line := int(_line_slider.value)
+	SettingsManager.set_value("scene_font_size", scene_size, false)
+	SettingsManager.set_value("ui_font_size", ui_size, false)
+	SettingsManager.set_value("line_spacing", line, false)
+	if persist:
+		SettingsManager.save_settings()
+	Palette.apply_typography(theme, ui_size, line)
+	if _font_preview != null:
+		_font_preview.add_theme_font_size_override("normal_font_size", scene_size)
+		_font_preview.add_theme_constant_override("line_separation", line)
+
+func _refresh_model_name() -> void:
+	if _model_name == null:
+		return
+	if str(SettingsManager.get_value("ai_provider", "local")) == "openrouter":
+		_model_name.text = "Провайдер: OpenRouter · " + (str(SettingsManager.get_value("openrouter_model", "")) if str(SettingsManager.get_value("openrouter_model", "")) != "" else "модель не выбрана")
+		return
+	var selected := str(SettingsManager.get_value("model_path", ""))
+	var ready := AIConnector.model_path != ""
+	if selected == "":
+		_model_name.text = "Локальная модель: не выбрана"
+	elif ready and AIConnector.model_path == ProjectSettings.globalize_path(selected):
+		_model_name.text = "Локальная модель: " + ModelManager.display_name(selected) + " · загружена"
+	else:
+		_model_name.text = "Локальная модель: " + ModelManager.display_name(selected) + " · выбрана, не загружена"
 
 func _refresh_models() -> void:
 	if _models_box == null:
@@ -259,10 +339,11 @@ func _refresh_models() -> void:
 		box.add_child(Kit.small("Импортируйте .gguf или выберите OpenRouter. Новый APK больше не содержит модель внутри.", Palette.MUTED))
 		empty.add_child(box)
 		_models_box.add_child(empty)
-		_model_name.text = "Локальная модель: не выбрана"
+		_refresh_model_name()
 		return
 	for m in models:
 		_models_box.add_child(_model_row(m, current))
+	_refresh_model_status()
 
 func _model_row(m: Dictionary, current: String) -> PanelContainer:
 	var p := Kit.panel("InsetPanel")
@@ -270,7 +351,7 @@ func _model_row(m: Dictionary, current: String) -> PanelContainer:
 	p.add_child(row)
 	var text := Kit.vbox(2)
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var name := Kit.label(str(m.get("name", "")), 15, Palette.TEXT)
+	var name := Kit.label(ModelManager.display_name(str(m.get("name", ""))), 15, Palette.TEXT)
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name.clip_text = true
@@ -280,8 +361,8 @@ func _model_row(m: Dictionary, current: String) -> PanelContainer:
 	if bool(m.get("builtin", false)):
 		flags.append("встроенная копия")
 	if str(m.get("path", "")) == current:
-		flags.append("выбрана")
-	if AIConnector.is_ready() and not AIConnector.is_openrouter() and str(m.get("path", "")) == current:
+		flags.append("активна")
+	if AIConnector.model_path != "" and AIConnector.model_path == ProjectSettings.globalize_path(str(m.get("path", ""))):
 		flags.append("загружена")
 	text.add_child(Kit.small(" · ".join(flags), Palette.MUTED))
 	row.add_child(text)
@@ -308,7 +389,7 @@ func _load_model_path(path: String) -> void:
 	AIConnector.unload()
 	AIConnector.initialize()
 	_refresh_models()
-	toast("Загружаю: " + path.get_file())
+	toast("Загружаю: " + ModelManager.display_name(path))
 
 func _ask_delete_model(path: String, name: String) -> void:
 	_pending_delete_path = path
@@ -340,6 +421,7 @@ func _on_model_selected(idx: int) -> void:
 func _on_provider_selected(idx: int) -> void:
 	SettingsManager.set_value("ai_provider", "openrouter" if idx == 1 else "local")
 	_or_status.text = "Провайдер: OpenRouter" if idx == 1 else "Провайдер: локальная модель"
+	_refresh_model_status()
 	if idx == 1 and OpenRouterClient.api_key() != "":
 		OpenRouterClient.fetch_models()
 
@@ -411,22 +493,50 @@ func _on_light_toggled(on: bool) -> void:
 	(_controls["max_tokens"] as SpinBox).value = 256
 	(_controls["threads"] as SpinBox).value = 4
 
-func _on_ai_status(text: String) -> void:
-	_model_status.text = text
+func _refresh_model_status() -> void:
+	if _model_status == null:
+		return
+	var text := ""
 	var color := Palette.MUTED
-	if AIConnector.is_ready():
-		color = Palette.OK
-	elif text.to_lower().contains("ошиб") or text.to_lower().contains("не "):
-		color = Palette.DANGER
+	if AIConnector.is_openrouter():
+		if AIConnector.is_ready():
+			text = "Облако: OpenRouter готов"
+			color = Palette.BLUE
+		elif AIConnector.last_error != "":
+			text = "Облако: ошибка · " + AIConnector.last_error
+			color = Palette.DANGER
+		else:
+			text = "Облако: не настроено"
+	else:
+		var selected := str(SettingsManager.get_value("model_path", ""))
+		var loaded := AIConnector.model_path != "" and selected != "" and AIConnector.model_path == ProjectSettings.globalize_path(selected)
+		if AIConnector.loading:
+			var pct := AIConnector.load_percent
+			text = "Загружается: %d%%" % pct if pct > 0 else "Загружается…"
+			color = Palette.WARN
+		elif AIConnector.is_ready() and loaded:
+			text = "Загружена: " + selected.get_file()
+			color = Palette.OK
+		elif AIConnector.last_error != "":
+			text = "Ошибка: " + AIConnector.last_error
+			color = Palette.DANGER
+		elif selected != "":
+			text = "Выбрана, но не загружена: " + selected.get_file()
+			color = Palette.WARN
+		else:
+			text = "Модель не выбрана"
+	_model_status.text = text
 	_model_status.add_theme_color_override("font_color", color)
+	_refresh_model_name()
 
-func _on_load_progress(percent: int) -> void:
-	_model_status.text = "Загрузка модели: %d%%" % percent
-	_model_status.add_theme_color_override("font_color", Palette.WARN)
+func _on_ai_status(_text: String) -> void:
+	_refresh_model_status()
 
-func _on_model_loaded(path: String) -> void:
-	_model_status.text = "Загружена: " + path.get_file()
-	_model_status.add_theme_color_override("font_color", Palette.OK)
+func _on_load_progress(_percent: int) -> void:
+	_refresh_model_status()
+
+func _on_model_loaded(_path: String) -> void:
+	_refresh_model_status()
 	_refresh_models()
 
 func _on_model_failed(message: String) -> void:
@@ -440,7 +550,7 @@ func _start_import(src: String) -> void:
 	if not src.to_lower().ends_with(".gguf"):
 		toast("Нужен файл .gguf", true)
 		return
-	var base := src.get_file()
+	var base := _clean_model_name(src)
 	var dst := "user://models/" + base
 	DirAccess.make_dir_recursive_absolute("user://models")
 	if FileAccess.file_exists(dst) and _file_size(dst) == _file_size(src):
@@ -498,6 +608,25 @@ func _import_worker() -> void:
 		return
 	_import_done = true
 
+func _clean_model_name(path: String) -> String:
+	var decoded := path.uri_decode().get_file()
+	decoded = decoded.strip_edges()
+	if decoded.to_lower().ends_with(".gguf"):
+		decoded = decoded.substr(0, decoded.length() - 5)
+	var out := ""
+	for ch in decoded:
+		var code := ch.unicode_at(0)
+		if code < 32 or ch in ["\\", "/", ":", "*", "?", "\"", "<", ">", "|", "%"]:
+			out += "_"
+		else:
+			out += ch
+	out = out.strip_edges()
+	while out.contains("__"):
+		out = out.replace("__", "_")
+	if out == "":
+		out = "model"
+	return out + ".gguf"
+
 func _file_size(path: String) -> int:
 	if not FileAccess.file_exists(path):
 		return 0
@@ -530,6 +659,7 @@ func _process(_delta: float) -> void:
 			_import_label.text = "Импортировано: " + _import_dst.get_file()
 			toast("Модель импортирована. Нажмите «Загрузить» у неё в списке.")
 			_refresh_models()
+			_refresh_model_status()
 
 func _refresh_ram() -> void:
 	if _ram_bar == null:

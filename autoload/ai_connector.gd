@@ -129,7 +129,10 @@ func _start_model_load(path: String) -> void:
 	if loading or busy:
 		return
 	if not ClassDB.class_exists("LlamaModel") or not ClassDB.class_exists("LlamaContext"):
-		_fail_load("GDExtension llama не загрузилось. Проверьте lib/arm64-v8a в APK.")
+		var details := "GDExtension llama не загрузилось. Проверьте lib/arm64-v8a в APK."
+		if OS.has_feature("android"):
+			details += " Нужны libgodot_llama, libllama, libggml, libggml-cpu и libggml-base."
+		_fail_load(details)
 		return
 	var load_path := path
 	if load_path.begins_with("user://") or load_path.begins_with("res://"):

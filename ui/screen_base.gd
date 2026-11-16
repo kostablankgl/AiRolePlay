@@ -4,9 +4,11 @@ const Palette = preload("res://ui/app_theme.gd")
 const Kit = preload("res://ui/kit.gd")
 
 var _bg: ColorRect
+var page_margin: MarginContainer
 
 func _enter_tree() -> void:
 	theme = Palette.get_theme()
+	Palette.apply_typography(theme, int(SettingsManager.get_value("ui_font_size", 15)), int(SettingsManager.get_value("line_spacing", 4)))
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_bg = ColorRect.new()
 	_bg.color = Palette.BG
@@ -26,6 +28,7 @@ func _enter_tree() -> void:
 
 func setup_page(margin_h: int = 24, margin_v: int = 18, separation: int = 14) -> VBoxContainer:
 	var margin := MarginContainer.new()
+	page_margin = margin
 	margin.add_theme_constant_override("margin_left", margin_h)
 	margin.add_theme_constant_override("margin_right", margin_h)
 	margin.add_theme_constant_override("margin_top", margin_v)

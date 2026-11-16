@@ -40,6 +40,7 @@ func _ensure() -> void:
 	_tab_bar.tab_changed.connect(_switch_tab)
 	box.add_child(_tab_bar)
 	_body = Control.new()
+	_body.custom_minimum_size = Vector2.ZERO
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_body.clip_contents = true
@@ -53,6 +54,10 @@ func _make_tab() -> VBoxContainer:
 	var sc := ScrollContainer.new()
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	sc.follow_focus = true
+	sc.custom_minimum_size = Vector2.ZERO
+	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_body.add_child(sc)
 	sc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var content := Kit.vbox(8)
@@ -153,18 +158,18 @@ func _refresh_character() -> void:
 		for a in abilities:
 			_character_box.add_child(Kit.small("• " + str(a), Palette.TEXT))
 	_character_box.add_child(Kit.separator())
-	_character_box.add_child(Kit.small("Хроника: %d ходов" % GameState.turn_number(), Palette.MUTED))
+	var chronicle := Kit.button("Хроника: %d ходов" % GameState.turn_number(), "GhostButton")
+	chronicle.custom_minimum_size = Vector2(0, 44)
+	chronicle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chronicle.pressed.connect(_show_chronicle)
+	_character_box.add_child(chronicle)
 
 func _refresh_inventory() -> void:
 	Kit.clear(_inventory_box)
 	var slots := int(GameState.inventory_slots)
 	var display := GameState.inventory_display()
-	var head := Kit.hbox(8)
-	head.add_child(Kit.label("Сумка", 19, Palette.GOLD))
-	head.add_child(Kit.spacer())
-	head.add_child(Kit.label("%d / %d" % [mini(display.size(), slots), slots], 13, Palette.MUTED))
-	_inventory_box.add_child(head)
-	var grid := Kit.grid(4, 6, 6)
+	_inventory_box.add_child(Kit.label("Сумка · %d/%d" % [mini(display.size(), slots), slots], 19, Palette.GOLD))
+	var grid := Kit.grid(4, 10, 10)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for item_v in display:
 		grid.add_child(_item_slot(item_v))
@@ -280,7 +285,8 @@ func _relation_row(r: Dictionary) -> Button:
 	var sub := str(r.get("type", "")).strip_edges()
 	if note != "":
 		sub = (sub + " · " + note) if sub != "" else note
-	var st := Kit.small(sub, Palette.MUTED)
+	var relation_type := str(r.get("relation_type", r.get("type", ""))).strip_edges()
+	var st := Kit.small(relation_type, Palette.MUTED)
 	st.autowrap_mode = TextServer.AUTOWRAP_OFF
 	st.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	st.clip_text = true
@@ -291,6 +297,35 @@ func _relation_row(r: Dictionary) -> Button:
 	dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(dots)
 	return b
+
+func _show_chronicle() -> void:
+	var d := AcceptDialog.new()
+	d.title = "Хроника · %d ходов" % GameState.turn_number()
+	d.dialog_autowrap = true
+	d.ok_button_text = "Закрыть"
+	var sc := ScrollContainer.new()
+	sc.custom_minimum_size = Vector2(620, 420)
+	var box := Kit.vbox(6)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(box)
+	if GameState.timeline.is_empty() and GameState.history.is_empty():
+		box.add_child(Kit.small("Событий пока нет.", Palette.MUTED))
+	for ev_v in GameState.timeline:
+		if ev_v is Dictionary:
+			var date := str(ev_v.get("date", ""))
+			var line := str(ev_v.get("event", ""))
+			if line != "":
+				box.add_child(Kit.small(("%s · " % GameState.format_date_ru(date) if date != "" else "") + line, Palette.TEXT))
+	for i in range(GameState.history.size()):
+		var h: Dictionary = GameState.history[i]
+		var act := str(h.get("action", "")).strip_edges()
+		if act != "":
+			box.add_child(Kit.small("%d. %s" % [i + 1, act], Palette.MUTED))
+	d.add_child(sc)
+	add_child(d)
+	d.confirmed.connect(d.queue_free)
+	d.canceled.connect(d.queue_free)
+	d.popup_centered(Vector2i(680, 500))
 
 func _show_item(item: Dictionary) -> void:
 	var d := AcceptDialog.new()
@@ -310,14 +345,24 @@ func _show_relation(r: Dictionary) -> void:
 	d.dialog_autowrap = true
 	d.ok_button_text = "Закрыть"
 	var level := clampi(int(r.get("level", 0)), 0, 5)
-	d.dialog_text = "%s · %s\n\n%s\n\nБлизость: %s (%d/5)" % [
-		str(r.get("type", "")),
+	d.dialog_text = "%s · %s\n\n%s\n\nОтношение: %s (%d/5)" % [
+		str(r.get("relation_type", r.get("type", ""))),
 		str(r.get("group_name", "")),
 		str(r.get("note", "")) if str(r.get("note", "")) != "" else "—",
 		GameState.rel_label(level),
 		level,
 	]
+	d.transient = true
+	d.exclusive = true
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	dim.z_index = 200
+	get_tree().root.add_child(dim)
+	d.tree_exited.connect(dim.queue_free)
 	add_child(d)
 	d.confirmed.connect(d.queue_free)
 	d.canceled.connect(d.queue_free)
+	d.close_requested.connect(d.queue_free)
 	d.popup_centered(Vector2i(500, 280))

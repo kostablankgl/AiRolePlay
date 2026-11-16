@@ -31,6 +31,9 @@ const DEFAULTS := {
 	"flash_attn": false,
 	"kv_type": "q8_0",
 	"use_repack": false,
+	"scene_font_size": 18,
+	"ui_font_size": 15,
+	"line_spacing": 4,
 }
 
 var data: Dictionary = {}
@@ -71,6 +74,9 @@ func _sanitize() -> void:
 	data["kv_type"] = str(data.get("kv_type", "q8_0"))
 	if data["kv_type"] not in ["f16", "q8_0", "q4_0"]:
 		data["kv_type"] = "q8_0"
+	data["scene_font_size"] = clampi(int(data.get("scene_font_size", 18)), 14, 30)
+	data["ui_font_size"] = clampi(int(data.get("ui_font_size", 15)), 12, 20)
+	data["line_spacing"] = clampi(int(data.get("line_spacing", 4)), 0, 10)
 
 func save_settings() -> void:
 	var f := FileAccess.open(PATH, FileAccess.WRITE)

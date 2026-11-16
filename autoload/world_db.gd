@@ -353,8 +353,7 @@ func format_money(minor: int, w: Dictionary) -> String:
 				parts.append("%d" % rest)
 	else:
 		var left := rest
-		if major > 0:
-			parts.append("%s%d" % [symbol, major])
+		parts.append("%s%d" % [symbol, major])
 		for sub_v in subunits:
 			var sub: Dictionary = sub_v
 			var per := int(sub.get("per_major", 1))
@@ -362,12 +361,8 @@ func format_money(minor: int, w: Dictionary) -> String:
 				per = 1
 			var count := int(left / per)
 			left = left % per
-			if count > 0:
-				parts.append("%d%s" % [count, str(sub.get("short", ""))])
-		if left > 0:
-			parts.append("%d%s" % [left, str(cur.get("minor_short", ""))])
-		if parts.is_empty():
-			parts.append("%s0" % symbol)
+			parts.append("%d%s" % [count, str(sub.get("short", ""))])
+		parts.append("%d%s" % [left, str(cur.get("minor_short", ""))])
 	var text := " ".join(parts)
 	return ("-" if negative else "") + text
 

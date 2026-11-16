@@ -62,8 +62,9 @@ static func choice_button(heading: String, description: String) -> Button:
 	n.theme_type_variation = "ChoiceButton"
 	n.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	n.text = ""
-	n.custom_minimum_size = Vector2(0, 78)
+	n.custom_minimum_size = Vector2(0, 76)
 	n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	n.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var margin := MarginContainer.new()
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -75,7 +76,9 @@ static func choice_button(heading: String, description: String) -> Button:
 	var box := vbox(3)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(box)
-	var title := label(heading, 17, Palette.TEXT, true)
+	var title := label(heading, 16, Palette.TEXT, true)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var bold := bold_font()
 	if bold != null:
@@ -83,6 +86,8 @@ static func choice_button(heading: String, description: String) -> Button:
 	box.add_child(title)
 	if description != "":
 		var desc := label(description, 13, Palette.MUTED, true)
+		desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_child(desc)
 	return n

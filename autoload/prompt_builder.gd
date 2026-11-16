@@ -14,9 +14,9 @@ func build_intro_prompt(setup: String) -> Dictionary:
 func build_prompt(action: String, opts: Dictionary = {}) -> Dictionary:
 	var continuation := bool(opts.get("continuation", false))
 	var hint := str(opts.get("hint", ""))
-	return _assemble(action, false, hint, continuation)
+	return _assemble(action, false, hint, continuation, bool(opts.get("name_retry", false)))
 
-func _assemble(action: String, is_intro: bool, hint: String, continuation: bool = false) -> Dictionary:
+func _assemble(action: String, is_intro: bool, hint: String, continuation: bool = false, name_retry: bool = false) -> Dictionary:
 	var w := GameState.world
 	var n_ctx := int(SettingsManager.get_value("n_ctx", 4096))
 	var compact := n_ctx < 4096
@@ -27,8 +27,12 @@ func _assemble(action: String, is_intro: bool, hint: String, continuation: bool 
 	fixed.append(_output_format(w, compact))
 	fixed.append("")
 	fixed.append(_catalog(w, compact))
+	fixed.append("")
+	fixed.append(_canon_names(w))
 	var fixed_text := "\n".join(fixed)
 	var user_text := _user_block(action, is_intro, hint, continuation, compact)
+	if name_retry:
+		user_text += "\nВ предыдущем ответе появилось имя, которого нет в каноне. Используй только имена из списка; не придумывай новых персонажей."
 	var budget := mini(MAX_PROMPT_CHARS, maxi(3600, int(float(n_ctx) * 1.85)))
 	var remaining := budget - fixed_text.length() - user_text.length()
 	var parts: PackedStringArray = [fixed_text]
@@ -102,7 +106,12 @@ func _user_block(action: String, is_intro: bool, hint: String, continuation: boo
 func _system_rules(w: Dictionary, compact: bool = false) -> String:
 	var lines: PackedStringArray = []
 	lines.append("Ты — мастер текстовой ролевой игры. Ты ведёшь одну непрерывную историю. " + strip_special(str(w.get("language_instruction", "Пиши на русском языке."))))
+	var address := str(w.get("address_form", "вы")).strip_edges().to_lower()
+	if address not in ["ты", "вы"]:
+		address = "вы"
+	lines.append("Обращайся к игроку только на «%s». Не смешивай «ты» и «вы» в одной сцене или между сценами." % address)
 	lines.append("Пиши во втором лице, в настоящем времени, живо и конкретно. Без Markdown, списков и заголовков внутри сцены.")
+	lines.append("Имена персонажей неизменны. Используй только имена из канонического списка. Новые имена не изобретать и не переименовывать существующих.")
 	lines.append("Ты управляешь только миром и второстепенными персонажами. Не решай за игрока, не описывай его мысли как приказ и не заканчивай историю без его хода.")
 	lines.append("Не убивай персонажа игрока, не отбирай всё имущество и не меняй его характер без явного хода.")
 	if not compact:
@@ -200,6 +209,41 @@ func _catalog(w: Dictionary, compact: bool = false) -> String:
 			lines.append("- %s — %s" % [str(id), str(item.get("name", ""))])
 			count += 1
 	return "\n".join(lines)
+
+func unknown_canon_names(scene: String) -> Array:
+	var known: Dictionary = {}
+	for word in str(GameState.character.get("name", "")).to_lower().split(" ", false):
+		known[word] = true
+	for c_v in GameState.world.get("characters", []):
+		if c_v is Dictionary:
+			for word in str(c_v.get("name", "")).to_lower().split(" ", false):
+				known[word] = true
+	for l_v in GameState.world.get("locations", []):
+		if l_v is Dictionary:
+			for word in str(l_v.get("name", "")).to_lower().split(" ", false):
+				known[word] = true
+	for item_v in GameState.world.get("items", {}).values():
+		if item_v is Dictionary:
+			for word in str(item_v.get("name", "")).to_lower().split(" ", false):
+				known[word] = true
+	var re := RegEx.new()
+	re.compile("(?:[Мм]истер|[Мм]иссис|[Мм]исс|[Лл]орд|[Лл]еди|[Сс]эр|[Мм]адам|[Дд]октор|[Гг]раф|[Гг]рафиня)\\.?[ \\t]+([А-ЯЁа-яёA-Za-z-]+)")
+	var out: Array = []
+	for m in re.search_all(scene):
+		var nm := m.get_string(1).to_lower()
+		if nm != "" and not known.has(nm) and not out.has(m.get_string(1)):
+			out.append(m.get_string(1))
+	return out
+
+func _canon_names(w: Dictionary) -> String:
+	var names: PackedStringArray = []
+	for c_v in w.get("characters", []):
+		if c_v is Dictionary:
+			var c: Dictionary = c_v
+			var nm := str(c.get("name", "")).strip_edges()
+			if nm != "":
+				names.append(nm)
+	return "КАНОН ИМЁН (только эти персонажи существуют): " + ", ".join(names) + "."
 
 func _lore_for(action: String) -> Array:
 	var w := GameState.world

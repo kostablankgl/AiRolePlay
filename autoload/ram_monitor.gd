@@ -20,23 +20,24 @@ func _ready() -> void:
 	add_child(_timer)
 
 func refresh() -> void:
-	var info := _read_meminfo()
-	if info.is_empty():
-		valid = false
-		total_mb = 0
-		available_mb = 0
-		pressure = 0.0
-		updated.emit()
-		return
-	total_mb = int(round(float(info.get("MemTotal", 0)) / 1024.0))
-	available_mb = int(round(float(info.get("MemAvailable", 0)) / 1024.0))
-	if available_mb <= 0:
-		available_mb = int(round(float(int(info.get("MemFree", 0)) + int(info.get("Buffers", 0)) + int(info.get("Cached", 0))) / 1024.0))
-	swap_total_mb = int(round(float(info.get("SwapTotal", 0)) / 1024.0))
-	swap_free_mb = int(round(float(info.get("SwapFree", 0)) / 1024.0))
+	var total_bytes := 0
+	var avail_bytes := 0
+	var mem := OS.get_memory_info()
+	if mem.has("physical"):
+		total_bytes = int(mem.get("physical", 0))
+		avail_bytes = int(mem.get("available", 0))
+	if total_bytes <= 0 or avail_bytes <= 0:
+		var info := _read_meminfo()
+		total_bytes = int(info.get("MemTotal", 0)) * 1024
+		avail_bytes = int(info.get("MemAvailable", 0)) * 1024
+		if avail_bytes <= 0:
+			avail_bytes = (int(info.get("MemFree", 0)) + int(info.get("Buffers", 0)) + int(info.get("Cached", 0))) * 1024
+		swap_total_mb = int(round(float(info.get("SwapTotal", 0)) / 1024.0))
+		swap_free_mb = int(round(float(info.get("SwapFree", 0)) / 1024.0))
+	total_mb = int(round(float(total_bytes) / 1048576.0))
+	available_mb = int(round(float(avail_bytes) / 1048576.0))
 	valid = total_mb > 0 and available_mb > 0
-	if total_mb > 0:
-		pressure = clampf(float(total_mb - available_mb) / float(total_mb), 0.0, 1.0)
+	pressure = clampf(float(total_mb - available_mb) / float(total_mb), 0.0, 1.0) if total_mb > 0 else 0.0
 	updated.emit()
 
 func get_ram() -> Dictionary:
@@ -140,5 +141,5 @@ func suggestion(model_path: String, n_ctx: int) -> String:
 		return "Не удалось прочитать /proc/meminfo — данные о памяти недоступны."
 	var footprint := estimate_footprint_mb(model_path, n_ctx)
 	if is_risky(footprint):
-		return "Свободно %s, а модели нужно около %s. Включите лёгкий режим или уменьшите контекст до 2048–4096." % [format_gb(available_mb), format_mb(footprint)]
-	return "Расчётный рабочий набор: около %s. Свободно %s." % [format_mb(footprint), format_gb(available_mb)]
+		return "Свободно %s, а модели нужно около %s. Риск выгрузки в ZRAM и закрытия приложения. Включите лёгкий режим или уменьшите контекст до 2048–4096." % [format_gb(available_mb), format_mb(footprint)]
+	return "Модель + контекст ≈ %s. Свободно %s." % [format_mb(footprint), format_gb(available_mb)]

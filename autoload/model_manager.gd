@@ -53,10 +53,16 @@ func active_model() -> String:
 func model_name() -> String:
 	var current := active_model()
 	if current != "":
-		return current.get_file()
+		return display_name(current)
 	if FileAccess.file_exists(EMBEDDED_SOURCE):
-		return MODEL_FILE
+		return display_name(MODEL_FILE)
 	return "модель не выбрана"
+
+func display_name(path: String) -> String:
+	var f := path.get_file()
+	if f.to_lower().ends_with(".gguf"):
+		f = f.substr(0, f.length() - 5)
+	return f
 
 func expected_size() -> int:
 	var current := active_model()

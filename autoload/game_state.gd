@@ -438,16 +438,41 @@ func _normalize_relationships(raw: Variant) -> Dictionary:
 		var c := WorldDB.get_character(world, str(id))
 		var e: Dictionary = out[id] if out[id] is Dictionary else { "level": int(out[id]) }
 		e["level"] = clampi(int(e.get("level", 0)), 0, 5)
-		if str(e.get("type", "")).strip_edges() == "":
-			e["type"] = str(c.get("type", c.get("role", "знакомый")))
-		if str(e.get("group", "")).strip_edges() == "":
-			e["group"] = str(c.get("group", "other"))
+		var relation_type := _relation_type_for(e, c)
+		e["relation_type"] = relation_type
+		e["type"] = relation_type
+		e["group"] = _relation_group_for(relation_type, str(c.get("group", "other")))
 		if str(e.get("emoji", "")).strip_edges() == "":
 			e["emoji"] = str(c.get("emoji", "•"))
 		if str(e.get("note", "")).strip_edges() == "":
 			e["note"] = str(e.get("secret", c.get("note", "")))
 		out[id] = e
 	return out
+
+func _relation_type_for(entry: Dictionary, character: Dictionary) -> String:
+	var explicit := str(entry.get("relation_type", "")).strip_edges()
+	if explicit != "":
+		return explicit
+	var hint := (str(entry.get("secret", "")) + " " + str(entry.get("note", ""))).to_lower()
+	for pair in [
+		["симпат", "симпатия"], ["поверен", "поверенный"], ["наставник", "наставник"],
+		["друг", "друг"], ["мать", "мать"], ["отец", "отец"], ["брат", "брат"],
+		["сестр", "сестра"], ["соперниц", "соперничество"], ["довери", "доверие"],
+	]:
+		if hint.contains(pair[0]):
+			return pair[1]
+	return str(character.get("relationship_type", character.get("type", character.get("role", "знакомый")))).strip_edges()
+
+func _relation_group_for(relation_type: String, fallback: String) -> String:
+	var t := relation_type.to_lower()
+	if t.contains("симпат") or t.contains("друг") or t.contains("поверен") or t.contains("наставник") or t.contains("довер"):
+		return "close"
+	if t.contains("мать") or t.contains("отец") or t.contains("брат") or t.contains("сестр") or t.contains("сын") or t.contains("дочь"):
+		return "family"
+	for group in relationship_groups():
+		if str(group.get("id", "")) == fallback:
+			return fallback
+	return "acquaintance"
 
 func rel_level(id: String) -> int:
 	if not relationships.has(id):
@@ -482,15 +507,15 @@ func relationship_rows() -> Array:
 		var level := 0
 		var secret := ""
 		var note := ""
-		var type := ""
-		var group := "other"
+		var relation_type := ""
+		var group := "acquaintance"
 		var emoji := "•"
 		if value is Dictionary:
 			level = int(value.get("level", 0))
 			secret = str(value.get("secret", ""))
 			note = str(value.get("note", secret))
-			type = str(value.get("type", ""))
-			group = str(value.get("group", "other"))
+			relation_type = str(value.get("relation_type", value.get("type", "")))
+			group = str(value.get("group", "acquaintance"))
 			emoji = str(value.get("emoji", "•"))
 		elif value is int or value is float:
 			level = int(value)
@@ -498,9 +523,10 @@ func relationship_rows() -> Array:
 			"id": str(id),
 			"name": str(c.get("name", id)),
 			"role": str(c.get("role", "")),
-			"type": type if type != "" else str(c.get("type", c.get("role", "знакомый"))),
-			"group": group if group != "" else str(c.get("group", "other")),
-			"group_name": relationship_group_name(group if group != "" else str(c.get("group", "other"))),
+			"type": relation_type if relation_type != "" else str(c.get("type", c.get("role", "знакомый"))),
+			"relation_type": relation_type if relation_type != "" else str(c.get("type", c.get("role", "знакомый"))),
+			"group": group,
+			"group_name": relationship_group_name(group),
 			"emoji": emoji if emoji != "" else str(c.get("emoji", "•")),
 			"level": clampi(level, 0, 5),
 			"note": note,
@@ -545,18 +571,18 @@ func relationship_group_name(group_id: String) -> String:
 func rel_label(level: int) -> String:
 	match clampi(level, 0, 5):
 		0:
-			return "нейтрально"
-		1:
 			return "знакомство"
+		1:
+			return "приятельство"
 		2:
-			return "симпатия"
-		3:
 			return "дружба"
-		4:
+		3:
 			return "близость"
-		5:
+		4:
 			return "доверие"
-	return "нейтрально"
+		5:
+			return "привязанность"
+	return "знакомство"
 
 func prompt_state() -> Dictionary:
 	var loc := WorldDB.get_location(world, location)

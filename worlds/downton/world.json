@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "id": "downton",
-  "version": 5,
+  "version": 6,
   "title": "Аббатство Даунтон",
   "subtitle": "Англия, 1912 год",
   "description": "Большой дом, титул и деньги, которые держатся на земле, браке и репутации. Вы — один из тех, кому предстоит жить по правилам, которые никто не записывал.",
@@ -438,7 +438,9 @@
       "relationships": {
         "sybil": {
           "level": 3,
-          "secret": "симпатия"
+          "secret": "симпатия",
+          "relation_type": "симпатия",
+          "group": "close"
         },
         "robert": {
           "level": 2,
@@ -450,7 +452,9 @@
         },
         "hale": {
           "level": 3,
-          "secret": "семейный поверенный"
+          "secret": "семейный поверенный",
+          "relation_type": "поверенный",
+          "group": "close"
         }
       },
       "flags": [
@@ -620,12 +624,13 @@
       "name": "Семья"
     },
     {
-      "id": "staff",
-      "name": "Дом и служба"
+      "id": "close",
+      "name": "Близкие"
     },
     {
-      "id": "outside",
-      "name": "Вне дома"
+      "id": "acquaintance",
+      "name": "Знакомые"
     }
-  ]
+  ],
+  "address_form": "вы"
 }

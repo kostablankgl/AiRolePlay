@@ -27,6 +27,14 @@ var _shown_partial := ""
 var _last_scene := ""
 var _last_choices: Array = []
 var _save_flash: Label
+var _name_retry_used := false
+var _middle: HBoxContainer
+var _left_col: VBoxContainer
+var _right_col: VBoxContainer
+var _kb_height_px: int = -1
+var _kb_fallback := false
+var _input_focused := false
+var _focus_serial := 0
 
 func _ready() -> void:
 	if not GameState.is_loaded():
@@ -51,10 +59,10 @@ func _ready() -> void:
 	AIConnector.initialize()
 
 func _build() -> void:
-	var outer := setup_page(8, 8, 8)
+	var outer := setup_page(6, 6, 6)
 	var top := Kit.panel("TopBarPanel")
 	top.custom_minimum_size.y = 56
-	var top_row := Kit.hbox(8)
+	var top_row := Kit.hbox(6)
 	top.add_child(top_row)
 	_menu_btn = Kit.button("☰", "GhostButton")
 	_menu_btn.custom_minimum_size = Vector2(48, 44)
@@ -99,13 +107,14 @@ func _build() -> void:
 	top_row.add_child(settings_btn)
 	outer.add_child(top)
 
-	var middle := Kit.hbox(8)
-	middle.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	outer.add_child(middle)
-	var left := Kit.vbox(8)
-	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	middle.add_child(left)
+	_middle = Kit.hbox(6)
+	_middle.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_child(_middle)
+	_left_col = Kit.vbox(6)
+	_left_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_left_col.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_middle.add_child(_left_col)
+	var left := _left_col
 	_banner = Kit.panel("InsetPanel")
 	_banner.visible = false
 	var brow := Kit.hbox(8)
@@ -122,16 +131,20 @@ func _build() -> void:
 	_banner.add_child(brow)
 	left.add_child(_banner)
 	story = StoryPanelType.new()
+	story.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left.add_child(story)
 	input_bar = InputBarType.new()
 	left.add_child(input_bar)
 	input_bar.submitted.connect(_on_free_text)
-	input_bar.continuation_requested.connect(_on_continue)
+	input_bar.focus_changed.connect(_on_input_focus)
+	input_bar.hide_keyboard_requested.connect(_sync_keyboard)
 
-	var right := Kit.vbox(8)
-	right.custom_minimum_size = Vector2(380, 0)
-	right.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	middle.add_child(right)
+	_right_col = Kit.vbox(6)
+	_right_col.custom_minimum_size = Vector2(380, 0)
+	_right_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_right_col.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_middle.add_child(_right_col)
+	var right := _right_col
 	status_panel = StatusPanelType.new()
 	status_panel.custom_minimum_size = Vector2(380, 260)
 	status_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -140,15 +153,20 @@ func _build() -> void:
 
 	var choices_panel := Kit.panel("CardPanel")
 	choices_panel.custom_minimum_size = Vector2(380, 260)
+	choices_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	choices_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	choices_panel.size_flags_stretch_ratio = 1.15
-	var cbox := Kit.vbox(6)
+	var cbox := Kit.vbox(8)
+	cbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	choices_panel.add_child(cbox)
-	cbox.add_child(Kit.label("Что вы сделаете?", 17, Palette.GOLD))
-	var cscroll := Kit.scroll()
-	cbox.add_child(cscroll)
+	var choice_title := Kit.label("Что вы сделаете?", 13, Palette.GOLD)
+	choice_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cbox.add_child(choice_title)
 	choices = ChoiceButtonsType.new()
-	cscroll.add_child(choices)
+	choices.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	choices.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	cbox.add_child(choices)
 	choices.choice_selected.connect(_on_choice)
 	right.add_child(choices_panel)
 
@@ -170,6 +188,7 @@ func _connect_ai() -> void:
 	AIConnector.generation_finished.connect(_on_generation_finished)
 	AIConnector.generation_failed.connect(_on_generation_failed)
 	AIConnector.copy_progress.connect(_on_copy_progress)
+	AIConnector.load_progress.connect(_on_load_progress)
 
 func _set_input_state(state: String, detail: String = "") -> void:
 	if input_bar != null:
@@ -187,18 +206,41 @@ func _set_model_state(text: String, color: Color) -> void:
 	_model_label.add_theme_color_override("font_color", color)
 
 func _on_ai_status(text: String) -> void:
+	if text.to_lower().contains("ошиб") or text.to_lower().contains("не удалось"):
+		_set_model_state("ИИ: ошибка", Palette.DANGER)
+		return
+	_refresh_model_label()
+
+func _refresh_model_label() -> void:
+	if AIConnector.is_openrouter():
+		if AIConnector.is_ready():
+			_set_model_state("ИИ: облако · OpenRouter", Palette.BLUE)
+		elif AIConnector.last_error != "":
+			_set_model_state("ИИ: ошибка · облако", Palette.DANGER)
+		else:
+			_set_model_state("ИИ: облако · не настроено", Palette.MUTED)
+		return
+	if AIConnector.loading:
+		var pct := AIConnector.load_percent
+		_set_model_state("ИИ: загрузка %d%%" % pct if pct > 0 else "ИИ: загрузка…", Palette.WARN)
+		return
 	if AIConnector.is_ready():
-		_set_model_state("ИИ: готов", Palette.OK)
-	elif text.to_lower().contains("ошиб") or text.to_lower().contains("не удалось"):
+		var tok := AIConnector.last_tok_s
+		_set_model_state("ИИ: локально · %.1f tok/s" % tok if tok > 0.0 else "ИИ: локально · готов", Palette.OK)
+		return
+	if AIConnector.last_error != "":
 		_set_model_state("ИИ: ошибка", Palette.DANGER)
 	else:
-		_set_model_state("ИИ: " + Kit.shorten(text, 28), Palette.WARN)
+		_set_model_state("ИИ: не загружена", Palette.MUTED)
 
 func _on_load_started() -> void:
-	_set_model_state("ИИ: загрузка…", Palette.WARN)
+	_refresh_model_label()
 	_show_banner("Загружаю модель…", Palette.WARN)
 	_set_input_state("loading", "Загрузка модели…")
 	choices.set_loading("Загружаю модель…")
+
+func _on_load_progress(percent: int) -> void:
+	_refresh_model_label()
 
 func _on_copy_progress(percent: int) -> void:
 	_set_model_state("ИИ: загрузка %d%%" % percent, Palette.WARN)
@@ -206,7 +248,7 @@ func _on_copy_progress(percent: int) -> void:
 	_set_input_state("loading", "Загрузка модели %d%%" % percent)
 
 func _on_model_loaded(_path: String) -> void:
-	_set_model_state("ИИ: готов", Palette.OK)
+	_refresh_model_label()
 	if _banner != null:
 		_banner.visible = false
 	_set_input_state("ready")
@@ -263,9 +305,11 @@ func _start_intro() -> void:
 		_generating = false
 		_restore_after_failure()
 
-func _begin_turn(action: String, continuation: bool = false) -> void:
+func _begin_turn(action: String, continuation: bool = false, name_retry: bool = false) -> void:
 	if _generating or AIConnector.busy:
 		return
+	if not name_retry:
+		_name_retry_used = false
 	_pending_action = action
 	_pending_continuation = continuation
 	_pending_intro = false
@@ -278,7 +322,7 @@ func _begin_turn(action: String, continuation: bool = false) -> void:
 	story.set_placeholder("Мастер пишет…")
 	choices.set_loading("Мастер пишет…")
 	_set_input_state("generating")
-	var prompt := PromptBuilder.build_prompt(action, { "continuation": continuation })
+	var prompt := PromptBuilder.build_prompt(action, { "continuation": continuation, "name_retry": name_retry })
 	if not AIConnector.generate(prompt.text, { "messages": prompt.get("messages", []) }):
 		_generating = false
 		_restore_after_failure()
@@ -294,11 +338,8 @@ func _on_choice(choice: Dictionary) -> void:
 func _on_free_text(text: String) -> void:
 	_begin_turn(text, false)
 
-func _on_continue() -> void:
-	_begin_turn("Продолжи сцену с того же момента, не повторяя написанное.", true)
-
 func _on_generation_started() -> void:
-	_set_model_state("ИИ: пишет…", Palette.GOLD)
+	_set_model_state("ИИ: облако · пишет…" if AIConnector.is_openrouter() else "ИИ: локально · пишет…", Palette.GOLD)
 
 func _on_token(token: String) -> void:
 	if not _generating:
@@ -351,6 +392,13 @@ func _on_generation_finished(text: String) -> void:
 		toast("Delta не разобрана — изменения не применены", true)
 	if scene_choices.is_empty():
 		scene_choices = WorldDB.get_default_choices(GameState.world)
+	if not _pending_intro and not _name_retry_used:
+		var unknown := PromptBuilder.unknown_canon_names(scene)
+		if not unknown.is_empty():
+			_name_retry_used = true
+			print("Повторная генерация: неизвестные имена ", unknown)
+			_begin_turn(_pending_action, _pending_continuation, true)
+			return
 	var report := GameState.apply_delta(delta)
 	if not report.get("rejected", []).is_empty():
 		toast("Часть изменений отклонена: " + ", ".join(report["rejected"]), true)
@@ -363,8 +411,7 @@ func _on_generation_finished(text: String) -> void:
 	choices.set_enabled(true)
 	_set_input_state("ready")
 	input_bar.clear()
-	var tok := AIConnector.last_tok_s
-	_set_model_state("ИИ: готов" + (" · %.1f tok/s" % tok if tok > 0.0 else ""), Palette.OK)
+	_refresh_model_label()
 	_pending_intro = false
 	status_panel.refresh()
 	_refresh_header()
@@ -436,6 +483,64 @@ func _leave_to_menu() -> void:
 	if GameState.is_loaded():
 		SaveManager.save_game(true)
 	go("res://scenes/main_menu.tscn")
+
+func _process(_delta: float) -> void:
+	var h := DisplayServer.virtual_keyboard_get_height()
+	if h != _kb_height_px:
+		_kb_height_px = h
+		if h > 0:
+			_kb_fallback = false
+		_apply_keyboard_inset(h)
+
+func _apply_keyboard_inset(h_px: int) -> void:
+	if page_margin == null:
+		return
+	var scale_y: float = get_viewport().get_screen_transform().get_scale().y
+	if scale_y <= 0.0:
+		scale_y = 1.0
+	var inset_ui := int(ceil(float(maxi(0, h_px)) / scale_y))
+	page_margin.add_theme_constant_override("margin_bottom", 6 + inset_ui)
+	if _right_col != null:
+		_right_col.visible = inset_ui == 0
+	if input_bar != null:
+		input_bar.visible = true
+
+func _on_input_focus(active: bool) -> void:
+	_input_focused = active
+	_focus_serial += 1
+	var serial := _focus_serial
+	if active:
+		story.scroll_to_end()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		if serial != _focus_serial or not _input_focused:
+			return
+		if DisplayServer.virtual_keyboard_get_height() == 0:
+			_kb_fallback = true
+			var fallback := int(float(get_viewport_rect().size.y) * 0.45)
+			_apply_keyboard_inset(fallback)
+	else:
+		_kb_fallback = false
+		_apply_keyboard_inset(DisplayServer.virtual_keyboard_get_height())
+
+func _sync_keyboard() -> void:
+	_kb_fallback = false
+	_apply_keyboard_inset(DisplayServer.virtual_keyboard_get_height())
+
+func _input(event: InputEvent) -> void:
+	if input_bar == null or not input_bar.has_input_focus():
+		return
+	var pos := Vector2.ZERO
+	var pressed := false
+	if event is InputEventScreenTouch:
+		pressed = (event as InputEventScreenTouch).pressed
+		pos = (event as InputEventScreenTouch).position
+	elif event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		pressed = mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT
+		pos = mb.position
+	if pressed and not input_bar.get_global_rect().has_point(pos):
+		input_bar.hide_keyboard()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
