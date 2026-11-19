@@ -13,6 +13,7 @@ var input_bar
 var _world_title: Label
 var _world_sub: Label
 var _date_label: Label
+var _selection_btn: Button
 var _model_label: Label
 var _banner: PanelContainer
 var _banner_label: Label
@@ -97,6 +98,21 @@ func _build() -> void:
 	_save_flash.custom_minimum_size.x = 92
 	_save_flash.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	top_row.add_child(_save_flash)
+	var font_minus := Kit.button("А−", "GhostButton")
+	font_minus.custom_minimum_size = Vector2(48, 44)
+	font_minus.tooltip_text = "Мельче текст сцены"
+	font_minus.pressed.connect(func() -> void: _change_story_font(-1))
+	top_row.add_child(font_minus)
+	var font_plus := Kit.button("А+", "GhostButton")
+	font_plus.custom_minimum_size = Vector2(48, 44)
+	font_plus.tooltip_text = "Крупнее текст сцены"
+	font_plus.pressed.connect(func() -> void: _change_story_font(1))
+	top_row.add_child(font_plus)
+	_selection_btn = Kit.button("Выделение", "GhostButton")
+	_selection_btn.custom_minimum_size = Vector2(124, 44)
+	_selection_btn.tooltip_text = "Выделять текст сцены"
+	_selection_btn.pressed.connect(_toggle_story_selection)
+	top_row.add_child(_selection_btn)
 	var settings_btn := Kit.button("⚙", "GhostButton")
 	settings_btn.custom_minimum_size = Vector2(48, 44)
 	settings_btn.tooltip_text = "Настройки"
@@ -132,6 +148,7 @@ func _build() -> void:
 	left.add_child(_banner)
 	story = StoryPanelType.new()
 	story.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	story.selection_changed.connect(_on_story_selection_changed)
 	left.add_child(story)
 	input_bar = InputBarType.new()
 	left.add_child(input_bar)
@@ -201,7 +218,6 @@ func _connect_ai() -> void:
 	AIConnector.token_received.connect(_on_token)
 	AIConnector.generation_finished.connect(_on_generation_finished)
 	AIConnector.generation_failed.connect(_on_generation_failed)
-	AIConnector.copy_progress.connect(_on_copy_progress)
 	AIConnector.load_progress.connect(_on_load_progress)
 
 func _set_input_state(state: String, detail: String = "") -> void:
@@ -255,11 +271,6 @@ func _on_load_started() -> void:
 
 func _on_load_progress(percent: int) -> void:
 	_refresh_model_label()
-
-func _on_copy_progress(percent: int) -> void:
-	_set_model_state("ИИ: загрузка %d%%" % percent, Palette.WARN)
-	_show_banner("Распаковываю модель: %d%%. Не закрывайте приложение." % percent, Palette.WARN)
-	_set_input_state("loading", "Загрузка модели %d%%" % percent)
 
 func _on_model_loaded(_path: String) -> void:
 	_refresh_model_label()
@@ -455,6 +466,20 @@ func _autosave() -> void:
 		_save_flash.text = "Сохранено %02d:%02d" % [int(t.get("hour", 0)), int(t.get("minute", 0))]
 	else:
 		_save_flash.text = "Не сохранено"
+
+func _change_story_font(delta: int) -> void:
+	if story != null:
+		story.change_font(delta)
+
+func _toggle_story_selection() -> void:
+	if story != null:
+		story.toggle_selection()
+
+func _on_story_selection_changed(enabled: bool) -> void:
+	if _selection_btn == null:
+		return
+	_selection_btn.text = "Готово" if enabled else "Выделение"
+	_selection_btn.add_theme_color_override("font_color", Palette.GOLD if enabled else Palette.MUTED)
 
 func _on_wide_drag(relative: Vector2) -> void:
 	if _right_col == null or _middle == null:

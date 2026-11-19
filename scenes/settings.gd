@@ -47,6 +47,12 @@ func _build() -> void:
 	var outer := setup_page()
 	outer.add_child(header("Настройки", "res://scenes/main_menu.tscn"))
 	var sc := Kit.scroll()
+	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
+	sc.follow_focus = true
+	sc.scroll_deadzone = 8
+	var scroll_bar := sc.get_v_scroll_bar()
+	scroll_bar.custom_minimum_size.x = 28
+	scroll_bar.add_theme_constant_override("minimum_grabber_size", 48)
 	outer.add_child(sc)
 	var page := Kit.vbox(12)
 	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -78,7 +84,7 @@ func _build() -> void:
 	mb.add_child(_import_label)
 	_models_box = Kit.vbox(6)
 	mb.add_child(_models_box)
-	mb.add_child(Kit.small("Все .gguf лежат только в user://models и не вшиваются в APK. Встроенная модель удаляется только вручную из файлов.", Palette.MUTED))
+	mb.add_child(Kit.small("Все .gguf лежат только в user://models и не входят в APK.", Palette.MUTED))
 	page.add_child(model)
 
 	var provider := Kit.panel("CardPanel")
@@ -336,7 +342,7 @@ func _refresh_models() -> void:
 		var empty := Kit.panel("InsetPanel")
 		var box := Kit.vbox(4)
 		box.add_child(Kit.label("Моделей нет", 16, Palette.TEXT))
-		box.add_child(Kit.small("Импортируйте .gguf или выберите OpenRouter. Новый APK больше не содержит модель внутри.", Palette.MUTED))
+		box.add_child(Kit.small("Импортируйте .gguf или выберите OpenRouter.", Palette.MUTED))
 		empty.add_child(box)
 		_models_box.add_child(empty)
 		_refresh_model_name()
@@ -358,8 +364,6 @@ func _model_row(m: Dictionary, current: String) -> PanelContainer:
 	text.add_child(name)
 	var size := float(int(m.get("size", 0))) / 1073741824.0
 	var flags: PackedStringArray = ["%.1f ГБ" % size]
-	if bool(m.get("builtin", false)):
-		flags.append("встроенная копия")
 	if str(m.get("path", "")) == current:
 		flags.append("активна")
 	if AIConnector.model_path != "" and AIConnector.model_path == ProjectSettings.globalize_path(str(m.get("path", ""))):
@@ -370,12 +374,11 @@ func _model_row(m: Dictionary, current: String) -> PanelContainer:
 	load.custom_minimum_size = Vector2(120, 44)
 	load.pressed.connect(_load_model_path.bind(str(m.get("path", ""))))
 	row.add_child(load)
-	if not bool(m.get("builtin", false)):
-		var del := Kit.button("×", "GhostButton")
-		del.custom_minimum_size = Vector2(44, 44)
-		del.tooltip_text = "Удалить модель"
-		del.pressed.connect(_ask_delete_model.bind(str(m.get("path", "")), str(m.get("name", ""))))
-		row.add_child(del)
+	var del := Kit.button("×", "GhostButton")
+	del.custom_minimum_size = Vector2(44, 44)
+	del.tooltip_text = "Удалить модель"
+	del.pressed.connect(_ask_delete_model.bind(str(m.get("path", "")), str(m.get("name", ""))))
+	row.add_child(del)
 	return p
 
 func _load_model_path(path: String) -> void:

@@ -4,7 +4,6 @@ signal status_changed(text: String)
 signal load_started
 signal model_loaded(path: String)
 signal model_failed(message: String)
-signal copy_progress(percent: int)
 signal generation_started
 signal token_received(token: String)
 signal generation_finished(text: String)
@@ -48,7 +47,6 @@ func _ready() -> void:
 	if not _connected_models:
 		ModelManager.model_ready.connect(_on_model_ready)
 		ModelManager.model_error.connect(_on_model_error)
-		ModelManager.copy_progress.connect(_on_copy_progress)
 		_connected_models = true
 
 func _process(_delta: float) -> void:
@@ -109,12 +107,6 @@ func initialize() -> void:
 		return
 	status_changed.emit("Подготавливаю модель...")
 	ModelManager.prepare()
-
-func _on_copy_progress(percent: int) -> void:
-	load_percent = percent
-	status_changed.emit("Распаковываю модель в память телефона: %d%%" % percent)
-	load_progress.emit(percent)
-	copy_progress.emit(percent)
 
 func _on_model_ready(path: String) -> void:
 	_start_model_load(path)

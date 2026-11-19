@@ -15,5 +15,3 @@ juego-*.exe
 juego-*.pck
 web/
 build/
-models/*.gguf
-models/*.part

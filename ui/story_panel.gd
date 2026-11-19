@@ -3,9 +3,10 @@ extends PanelContainer
 const Palette = preload("res://ui/app_theme.gd")
 const Kit = preload("res://ui/kit.gd")
 
+signal selection_changed(enabled: bool)
+
 var _label: RichTextLabel
 var _scroll: ScrollContainer
-var _selection_btn: Button
 var _hint: Label
 var _built := false
 var _scroll_queued := false
@@ -33,25 +34,6 @@ func _ensure() -> void:
 	add_child(margin)
 	var box := Kit.vbox(6)
 	margin.add_child(box)
-	var bar := Kit.hbox(6)
-	var title := Kit.small("Сцена", Palette.GOLD)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.add_child(title)
-	var minus := Kit.button("А−", "GhostButton")
-	minus.custom_minimum_size = Vector2(52, 36)
-	minus.tooltip_text = "Мельче текст сцены"
-	minus.pressed.connect(func() -> void: _change_font(-1))
-	bar.add_child(minus)
-	var plus := Kit.button("А+", "GhostButton")
-	plus.custom_minimum_size = Vector2(52, 36)
-	plus.tooltip_text = "Крупнее текст сцены"
-	plus.pressed.connect(func() -> void: _change_font(1))
-	bar.add_child(plus)
-	_selection_btn = Kit.button("Выделение", "GhostButton")
-	_selection_btn.custom_minimum_size = Vector2(124, 36)
-	_selection_btn.pressed.connect(_toggle_selection)
-	bar.add_child(_selection_btn)
-	box.add_child(bar)
 	_hint = Kit.small("", Palette.WARN)
 	_hint.visible = false
 	box.add_child(_hint)
@@ -98,7 +80,8 @@ func _refresh_typography() -> void:
 	_label.add_theme_font_size_override("normal_font_size", size)
 	_label.add_theme_constant_override("line_separation", line)
 
-func _change_font(delta: int) -> void:
+func change_font(delta: int) -> void:
+	_ensure()
 	var size := clampi(int(SettingsManager.get_value("scene_font_size", 18)) + delta, 14, 30)
 	SettingsManager.set_value("scene_font_size", size)
 	refresh_typography()
@@ -107,13 +90,17 @@ func _change_font(delta: int) -> void:
 func refresh_typography() -> void:
 	_refresh_typography()
 
-func _toggle_selection() -> void:
+func toggle_selection() -> void:
+	_ensure()
 	_label.selection_enabled = not _label.selection_enabled
-	_selection_btn.text = "Готово" if _label.selection_enabled else "Выделение"
 	_hint.visible = _label.selection_enabled
 	_hint.text = "Выделение включено: тяните по тексту. Нажмите «Готово», чтобы вернуть прокрутку."
 	_label.mouse_filter = Control.MOUSE_FILTER_PASS if _label.selection_enabled else Control.MOUSE_FILTER_IGNORE
 	_scroll.mouse_filter = Control.MOUSE_FILTER_PASS if _label.selection_enabled else Control.MOUSE_FILTER_STOP
+	selection_changed.emit(_label.selection_enabled)
+
+func is_selection_enabled() -> bool:
+	return _label != null and _label.selection_enabled
 
 func _on_scroll_input(event: InputEvent) -> void:
 	if _label.selection_enabled:
