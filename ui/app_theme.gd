@@ -128,6 +128,8 @@ static func _build() -> Theme:
 	t.set_stylebox("panel", "InsetPanel", _box(BG_SOFT, 12, 1, Color("2c333d"), 12))
 	t.set_type_variation("TopBarPanel", "PanelContainer")
 	t.set_stylebox("panel", "TopBarPanel", _box(Color("191c22"), 12, 1, Color("2b313a"), 12))
+	t.set_type_variation("DividerHandle", "PanelContainer")
+	t.set_stylebox("panel", "DividerHandle", _box(Color("1b1f25"), 8, 1, Color("3a424e"), 0))
 
 	t.set_stylebox("normal", "LineEdit", _box(BG_SOFT, 10, 1, BORDER, 12))
 	t.set_stylebox("focus", "LineEdit", _box(BG_SOFT, 10, 2, GOLD_DARK, 12))

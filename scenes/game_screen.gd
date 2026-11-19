@@ -4,6 +4,7 @@ const StoryPanelType = preload("res://ui/story_panel.gd")
 const StatusPanelType = preload("res://ui/status_panel.gd")
 const ChoiceButtonsType = preload("res://ui/choice_buttons.gd")
 const InputBarType = preload("res://ui/input_bar.gd")
+const DragDividerType = preload("res://ui/drag_divider.gd")
 
 var story
 var status_panel
@@ -12,7 +13,6 @@ var input_bar
 var _world_title: Label
 var _world_sub: Label
 var _date_label: Label
-var _money_button: Button
 var _model_label: Label
 var _banner: PanelContainer
 var _banner_label: Label
@@ -31,6 +31,10 @@ var _name_retry_used := false
 var _middle: HBoxContainer
 var _left_col: VBoxContainer
 var _right_col: VBoxContainer
+var _choices_panel: PanelContainer
+var _wide_divider: DragDivider
+var _tall_divider: DragDivider
+var _layout_guard := false
 var _kb_height_px: int = -1
 var _kb_fallback := false
 var _input_focused := false
@@ -83,13 +87,6 @@ func _build() -> void:
 	_date_label = Kit.label("", 14, Palette.MUTED)
 	_date_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	top_row.add_child(_date_label)
-	_money_button = Kit.button("", "GhostButton")
-	_money_button.custom_minimum_size = Vector2(150, 44)
-	_money_button.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_money_button.tooltip_text = "Открыть сумку и кошелёк"
-	_money_button.add_theme_color_override("font_color", Palette.GOLD)
-	_money_button.pressed.connect(_open_wallet)
-	top_row.add_child(_money_button)
 	_model_label = Kit.label("ИИ: —", 13, Palette.MUTED)
 	_model_label.custom_minimum_size.x = 150
 	_model_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -107,8 +104,11 @@ func _build() -> void:
 	top_row.add_child(settings_btn)
 	outer.add_child(top)
 
-	_middle = Kit.hbox(6)
+	var saved_width := int(SettingsManager.get_value("game_panel_width", 340))
+	var saved_choices := int(SettingsManager.get_value("game_choices_height", 300))
+	_middle = Kit.hbox(0)
 	_middle.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_middle.resized.connect(_clamp_layout)
 	outer.add_child(_middle)
 	_left_col = Kit.vbox(6)
 	_left_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -139,36 +139,50 @@ func _build() -> void:
 	input_bar.focus_changed.connect(_on_input_focus)
 	input_bar.hide_keyboard_requested.connect(_sync_keyboard)
 
-	_right_col = Kit.vbox(6)
-	_right_col.custom_minimum_size = Vector2(380, 0)
-	_right_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_wide_divider = DragDividerType.new()
+	_wide_divider.drag_axis = 0
+	_wide_divider.dragged.connect(_on_wide_drag)
+	_wide_divider.drag_finished.connect(_save_layout)
+	_middle.add_child(_wide_divider)
+
+	_right_col = Kit.vbox(0)
+	_right_col.custom_minimum_size = Vector2(saved_width, 0)
+	_right_col.size_flags_horizontal = Control.SIZE_FILL
 	_right_col.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_middle.add_child(_right_col)
 	var right := _right_col
 	status_panel = StatusPanelType.new()
-	status_panel.custom_minimum_size = Vector2(380, 260)
+	status_panel.custom_minimum_size = Vector2(0, 160)
 	status_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	status_panel.size_flags_stretch_ratio = 1.0
 	right.add_child(status_panel)
 
-	var choices_panel := Kit.panel("CardPanel")
-	choices_panel.custom_minimum_size = Vector2(380, 260)
-	choices_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	choices_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	choices_panel.size_flags_stretch_ratio = 1.15
+	_tall_divider = DragDividerType.new()
+	_tall_divider.drag_axis = 1
+	_tall_divider.dragged.connect(_on_tall_drag)
+	_tall_divider.drag_finished.connect(_save_layout)
+	right.add_child(_tall_divider)
+
+	_choices_panel = Kit.panel("CardPanel")
+	_choices_panel.custom_minimum_size = Vector2(0, saved_choices)
+	_choices_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_choices_panel.size_flags_vertical = Control.SIZE_FILL
 	var cbox := Kit.vbox(8)
 	cbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	choices_panel.add_child(cbox)
+	_choices_panel.add_child(cbox)
 	var choice_title := Kit.label("Что вы сделаете?", 13, Palette.GOLD)
 	choice_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cbox.add_child(choice_title)
+	var choices_scroll := Kit.scroll()
+	choices_scroll.get_v_scroll_bar().custom_minimum_size.x = 14
+	cbox.add_child(choices_scroll)
 	choices = ChoiceButtonsType.new()
 	choices.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	choices.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	cbox.add_child(choices)
+	choices_scroll.add_child(choices)
 	choices.choice_selected.connect(_on_choice)
-	right.add_child(choices_panel)
+	right.add_child(_choices_panel)
+	_clamp_layout.call_deferred()
 
 	_menu = PopupMenu.new()
 	_menu.add_item("Сохранить", 0)
@@ -280,12 +294,6 @@ func _refresh_header() -> void:
 	var loc := GameState.location_name()
 	_world_sub.text = (sub + " · " if sub != "" else "") + loc
 	_date_label.text = GameState.time_label()
-	_money_button.text = GameState.format_money(GameState.cash())
-	_money_button.tooltip_text = "Наличные: %s\nБанк: %s\nРезерв: %s" % [
-		GameState.format_money(GameState.cash()),
-		GameState.format_money(GameState.bank()),
-		GameState.format_money(GameState.trust()),
-	]
 
 func _start_intro() -> void:
 	if AIConnector.busy or not AIConnector.is_ready():
@@ -448,9 +456,44 @@ func _autosave() -> void:
 	else:
 		_save_flash.text = "Не сохранено"
 
-func _open_wallet() -> void:
-	if status_panel != null:
-		status_panel.open_wallet()
+func _on_wide_drag(relative: Vector2) -> void:
+	if _right_col == null or _middle == null:
+		return
+	var max_width := 560
+	if _middle.size.x > 320:
+		max_width = maxi(250, int(_middle.size.x * 0.58))
+	_right_col.custom_minimum_size.x = clampi(int(_right_col.custom_minimum_size.x) - int(relative.x), 250, max_width)
+
+func _on_tall_drag(relative: Vector2) -> void:
+	if _choices_panel == null or _right_col == null:
+		return
+	_choices_panel.custom_minimum_size.y = clampi(int(_choices_panel.custom_minimum_size.y) - int(relative.y), 150, _max_choices_height())
+
+func _max_choices_height() -> int:
+	if _right_col == null or _right_col.size.y < 520:
+		return 560
+	return maxi(150, int(_right_col.size.y) - 196)
+
+func _clamp_layout() -> void:
+	if _layout_guard:
+		return
+	_layout_guard = true
+	if _right_col != null and _middle != null:
+		var max_width := 560
+		if _middle.size.x > 320:
+			max_width = maxi(250, int(_middle.size.x * 0.58))
+		_right_col.custom_minimum_size.x = clampi(int(_right_col.custom_minimum_size.x), 250, max_width)
+	if _choices_panel != null and _right_col != null and _right_col.size.y >= 520:
+		_choices_panel.custom_minimum_size.y = clampi(int(_choices_panel.custom_minimum_size.y), 150, _max_choices_height())
+	_layout_guard = false
+
+func _save_layout() -> void:
+	if _right_col == null or _choices_panel == null:
+		return
+	SettingsManager.set_many({
+		"game_panel_width": int(_right_col.custom_minimum_size.x),
+		"game_choices_height": int(_choices_panel.custom_minimum_size.y),
+	})
 
 func _open_menu() -> void:
 	if _menu_btn == null:
@@ -502,6 +545,8 @@ func _apply_keyboard_inset(h_px: int) -> void:
 	page_margin.add_theme_constant_override("margin_bottom", 6 + inset_ui)
 	if _right_col != null:
 		_right_col.visible = inset_ui == 0
+	if _wide_divider != null:
+		_wide_divider.visible = inset_ui == 0
 	if input_bar != null:
 		input_bar.visible = true
 

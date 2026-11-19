@@ -22,7 +22,7 @@ func _ensure() -> void:
 		return
 	_built = true
 	theme_type_variation = "CardPanel"
-	custom_minimum_size = Vector2(340, 260)
+	custom_minimum_size = Vector2(0, 160)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	clip_contents = true
 	var margin := MarginContainer.new()
@@ -69,14 +69,6 @@ func _make_tab() -> VBoxContainer:
 func _switch_tab(index: int) -> void:
 	for i in range(_tabs.size()):
 		_tabs[i].visible = i == index
-
-func open_bag() -> void:
-	_tab_bar.current_tab = 1
-	_switch_tab(1)
-
-func open_wallet() -> void:
-	open_bag()
-	_show_item(GameState.wallet_item())
 
 func refresh() -> void:
 	if not _built:

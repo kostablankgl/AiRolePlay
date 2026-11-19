@@ -34,6 +34,8 @@ const DEFAULTS := {
 	"scene_font_size": 18,
 	"ui_font_size": 15,
 	"line_spacing": 4,
+	"game_panel_width": 340,
+	"game_choices_height": 300,
 }
 
 var data: Dictionary = {}
@@ -77,6 +79,8 @@ func _sanitize() -> void:
 	data["scene_font_size"] = clampi(int(data.get("scene_font_size", 18)), 14, 30)
 	data["ui_font_size"] = clampi(int(data.get("ui_font_size", 15)), 12, 20)
 	data["line_spacing"] = clampi(int(data.get("line_spacing", 4)), 0, 10)
+	data["game_panel_width"] = clampi(int(data.get("game_panel_width", 340)), 250, 640)
+	data["game_choices_height"] = clampi(int(data.get("game_choices_height", 300)), 150, 560)
 
 func save_settings() -> void:
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
